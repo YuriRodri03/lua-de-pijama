@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+@theme {
+  /* Cores extraídas diretamente das logos da cliente */
+  --color-lua-rose-dark: #b88784;    /* O rosa queimado marcante do texto e bordas */
+  --color-lua-rose-light: #dfc1be;   /* Um tom de rosa mais suave para detalhes e hovers */
+  --color-lua-cream: #fbf7f4;        /* O fundo off-white/creme super confortável */
+  --color-lua-gold: #e2be7a;         /* O dourado acetinado da lua e estrelas */
+  --color-lua-gold-dark: #caa359;    /* Dourado mais escuro para contrastes e botões */
+  
+  /* Fontes sugeridas para dar a elegância da marca */
+  --font-serif: 'Playfair Display', 'Georgia', serif;
+  --font-sans: 'Plus Jakarta Sans', 'Inter', sans-serif;
+}
+
+/* Adicionando uma transição suave global e o fundo padrão da loja */
+body {
+  background-color: var(--color-lua-cream);
+  color: #2c2524; /* Um marrom/cinza bem escuro, mais suave que o preto puro */
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
