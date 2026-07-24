@@ -55,12 +55,23 @@ export default function GestaoEquipe() {
     try {
       if (editandoId) {
         // --- FLUXO DE EDIÇÃO ---
-        const { error } = await supabase
+        // 1. Atualiza os dados na tabela visível pública (perfis)
+        const { error: dbError } = await supabase
           .from('perfis')
           .update({ nome, email, role, senha })
           .eq('id', editandoId);
 
-        if (error) throw error;
+        if (dbError) throw dbError;
+
+        // 2. Se o usuário estiver editando a PRÓPRIA conta, atualiza o login (Auth)
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.id === editandoId) {
+          const { error: authError } = await supabase.auth.updateUser({ email, password: senha });
+          if (authError) {
+            console.warn('Aviso ao atualizar Auth:', authError.message);
+          }
+        }
+
         alert('Colaborador atualizado com sucesso!');
       } else {
         // --- FLUXO DE CADASTRO INTELIGENTE E ISOLADO ---
@@ -80,17 +91,13 @@ export default function GestaoEquipe() {
         const authData = await response.json();
         let userId = authData?.id || authData?.user?.id;
 
-        // Se o Supabase disser que o usuário já está registrado (Erro 422 ou 400 com a mensagem específica)
+        // Se o Supabase disser que o usuário já está registrado
         if (!response.ok || authData.error) {
           const apiErrorMessage = authData.error?.message || '';
           
           if (apiErrorMessage.includes('already registered') || response.status === 422) {
-            // ESTRATÉGIA DE RECUPERAÇÃO: O e-mail já existe no Auth. 
-            // Vamos tentar fazer um login rápido ou buscar o ID dele para re-vincular à tabela pública.
             console.log('Usuário já existe no Auth interno. Tentando re-vincular perfil público...');
             
-            // Fazemos uma busca rápida na tabela de perfis (caso ele tenha alguma sessão ativa) 
-            // ou tentamos recuperar pelo fluxo padrão.
             const { data: usuarioExistente } = await supabase
               .from('perfis')
               .select('id')
@@ -100,8 +107,6 @@ export default function GestaoEquipe() {
             if (usuarioExistente?.id) {
               userId = usuarioExistente.id;
             } else {
-              // Se o perfil visual sumiu mas o Auth existe, podemos usar a estratégia de atualizar
-              // a linha pública usando o mecanismo de login temporário ou informar ao gestor.
               throw new Error('Este e-mail está em uso no sistema de autenticação interna, mas sem perfil ativo. Remova-o no painel do Supabase uma última vez.');
             }
           } else {
@@ -133,10 +138,10 @@ export default function GestaoEquipe() {
       buscarEquipe();
     } catch (error) {
       console.error('Erro ao salvar colaborador:', error.message);
-      alert(`Falha no Cadastro: ${error.message}`);
+      alert(`Falha no Cadastro/Edição: ${error.message}`);
     }
   };
-
+  
   // 3. INICIAR MODO EDIÇÃO
   const iniciarEdicao = (membro) => {
     setEditandoId(membro.id);
@@ -207,8 +212,7 @@ export default function GestaoEquipe() {
               value={email} 
               onChange={(e) => setEmail(e.target.value)} 
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark" 
-              required 
-              disabled={!!editandoId} 
+              required
             />
           </div>
 

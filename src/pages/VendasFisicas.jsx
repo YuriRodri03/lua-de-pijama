@@ -54,7 +54,7 @@ export default function VendasFisicas({ userRole }) {
         setVendedorNome('Bypass Admin');
       }
 
-      // Puxa produtos direto do estoque real (apenas colunas existentes)
+      // Puxa produtos direto do estoque real
       const { data: prods, error: prodError } = await supabase
         .from('produtos')
         .select('id, nome, preco_varejo, quantidade_estoque')
@@ -92,7 +92,7 @@ export default function VendasFisicas({ userRole }) {
     inicializarPDV();
   }, []);
 
-  // 2. ADICIONAR ITEM AO CARRINHO (Conectado com o estoque)
+  // 2. ADICIONAR ITEM AO CARRINHO
   const handleAdicionarItem = (e) => {
     e.preventDefault();
     if (!produtoSelecionado) {
@@ -127,7 +127,7 @@ export default function VendasFisicas({ userRole }) {
     setCarrinho(carrinho.filter(i => i.idTemp !== idTemp));
   };
 
-  // 3. CÁLCULOS FINANCEIROS SÍNCRONOS
+  // 3. CÁLCULOS FINANCEIROS
   const subtotalVenda = carrinho.reduce((acc, item) => acc + item.totalItem, 0);
   const totalACobrar = Math.max(0, subtotalVenda - parseFloat(desconto || 0));
 
@@ -150,7 +150,7 @@ export default function VendasFisicas({ userRole }) {
 
   const selecionarProduto = (prod) => {
     setProdutoSelecionado(prod);
-    setBuscaProduto(prod.nome); // Mostra apenas o nome limpo no input
+    setBuscaProduto(prod.nome);
     setMostrarSugestoesProd(false);
   };
 
@@ -161,7 +161,7 @@ export default function VendasFisicas({ userRole }) {
     try {
       setProcessandoVenda(true);
 
-      // Passo A: Abater dinamicamente do estoque real
+      // Passo A: Abater do estoque
       for (const item of carrinho) {
         const { data: prodAtual } = await supabase
           .from('produtos')
@@ -179,7 +179,7 @@ export default function VendasFisicas({ userRole }) {
         if (updateError) throw updateError;
       }
 
-      // Passo B: Persistir cabeçalho na tabela 'vendas' com o nome do vendedor correto
+      // Passo B: Persistir cabeçalho
       const { error: insertError } = await supabase
         .from('vendas')
         .insert([{
@@ -218,15 +218,15 @@ export default function VendasFisicas({ userRole }) {
   const totalVendidoHoje = vendasRealizadas.reduce((acc, v) => acc + parseFloat(v.total), 0);
 
   return (
-    <div className="space-y-8 text-left">
+    <div className="space-y-6 md:space-y-8 text-left pb-16">
       
       {/* CARD DE MÉTRICAS */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
         {userRole === 'admin' && (
           <StatCard 
             label="Faturamento de Caixa (Hoje)" 
             value={`R$ ${totalVendidoHoje.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} 
-            statusText={`${vendasRealizadas.length} ordens salvas no banco`} 
+            statusText={`${vendasRealizadas.length} ordens salvas`} 
             statusType="gold" 
           />
         )}
@@ -244,14 +244,14 @@ export default function VendasFisicas({ userRole }) {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8">
         
         {/* ENTRADA DE ITENS E CLIENTE */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-4 md:space-y-6">
           
           {/* AUTOCOMPLETE DE CLIENTES */}
-          <div className="bg-white border border-lua-rose-dark/10 p-6 rounded-2xl shadow-xs relative">
-            <h3 className="font-serif text-lg font-bold text-slate-800 mb-4">Identificar Cliente</h3>
+          <div className="bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs relative">
+            <h3 className="font-serif text-base md:text-lg font-bold text-slate-800 mb-3 md:mb-4">Identificar Cliente</h3>
             <div className="relative">
               <input 
                 type="text"
@@ -262,21 +262,21 @@ export default function VendasFisicas({ userRole }) {
                   setMostrarSugestoes(true);
                 }}
                 onFocus={() => setMostrarSugestoes(true)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 md:px-4 py-2.5 md:py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark"
               />
               {mostrarSugestoes && buscaCliente && (
                 <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto z-50 divide-y divide-slate-100">
                   {clientesFiltrados.length === 0 ? (
-                    <div className="p-3 text-xs text-slate-400">Nenhum cliente cadastrado com esse padrão.</div>
+                    <div className="p-3 text-xs text-slate-400">Nenhum cliente com esse padrão.</div>
                   ) : (
                     clientesFiltrados.map((c, idx) => (
                       <div 
                         key={idx}
                         onClick={() => selecionarCliente(c)}
-                        className="p-3 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer flex justify-between font-medium"
+                        className="p-3 text-xs md:text-sm text-slate-700 hover:bg-slate-50 cursor-pointer flex justify-between font-medium"
                       >
                         <span>👤 {c.nome}</span>
-                        <span className="text-xs text-slate-400 font-mono">{c.cpf || 'Sem CPF'}</span>
+                        <span className="text-[10px] md:text-xs text-slate-400 font-mono">{c.cpf || 'Sem CPF'}</span>
                       </div>
                     ))
                   )}
@@ -286,70 +286,67 @@ export default function VendasFisicas({ userRole }) {
           </div>
 
           {/* REGISTRAR PRODUTO */}
-          <div className="bg-white border border-lua-rose-dark/10 p-6 rounded-2xl shadow-xs">
-            <h3 className="font-serif text-lg font-bold text-slate-800 mb-4">Registrar Pijama</h3>
+          <div className="bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs">
+            <h3 className="font-serif text-base md:text-lg font-bold text-slate-800 mb-3 md:mb-4">Registrar Pijama</h3>
             <form onSubmit={handleAdicionarItem} className="space-y-4">
               
-              {/* Seção do Input de Busca + Dropdown */}
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
-                <div className="sm:col-span-12 relative">
-                  <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Buscar Pijama no Estoque</label>
-                  <input 
-                    type="text"
-                    placeholder="Busque pelo nome do pijama..."
-                    value={buscaProduto}
-                    onChange={(e) => {
-                      setBuscaProduto(e.target.value);
-                      setMostrarSugestoesProd(true);
-                      if (produtoSelecionado) setProdutoSelecionado(null); 
-                    }}
-                    onFocus={() => setMostrarSugestoesProd(true)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark h-9.5"
-                    required
-                  />
-                  
-                  {/* Menu de sugestões de produtos flutuante (Com z-index alto para flutuar de verdade) */}
-                  {mostrarSugestoesProd && buscaProduto && (
-                    <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto z-50 divide-y divide-slate-100">
-                      {produtosFiltrados.length === 0 ? (
-                        <div className="p-3 text-xs text-slate-400">Nenhum modelo em estoque com esse nome.</div>
-                      ) : (
-                        produtosFiltrados.map((p) => (
-                          <div 
-                            key={p.id}
-                            onClick={() => selecionarProduto(p)}
-                            className="p-3 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer flex justify-between font-medium"
-                          >
-                            <span>👕 {p.nome}</span>
-                            <span className="text-xs font-mono font-semibold text-lua-rose-dark">
-                              R$ {parseFloat(p.preco_varejo).toFixed(2)} ({p.quantidade_estoque} un)
-                            </span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
+              {/* Input de Busca + Dropdown */}
+              <div className="relative">
+                <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Buscar Pijama no Estoque</label>
+                <input 
+                  type="text"
+                  placeholder="Busque pelo nome do pijama..."
+                  value={buscaProduto}
+                  onChange={(e) => {
+                    setBuscaProduto(e.target.value);
+                    setMostrarSugestoesProd(true);
+                    if (produtoSelecionado) setProdutoSelecionado(null); 
+                  }}
+                  onFocus={() => setMostrarSugestoesProd(true)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 md:px-4 py-2.5 md:py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark h-auto md:h-9.5"
+                  required
+                />
+                
+                {mostrarSugestoesProd && buscaProduto && (
+                  <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto z-50 divide-y divide-slate-100">
+                    {produtosFiltrados.length === 0 ? (
+                      <div className="p-3 text-xs text-slate-400">Nenhum modelo em estoque.</div>
+                    ) : (
+                      produtosFiltrados.map((p) => (
+                        <div 
+                          key={p.id}
+                          onClick={() => selecionarProduto(p)}
+                          className="p-3 text-xs md:text-sm text-slate-700 hover:bg-slate-50 cursor-pointer flex justify-between font-medium"
+                        >
+                          <span className="truncate pr-2">👕 {p.nome}</span>
+                          <span className="text-[10px] md:text-xs font-mono font-semibold text-lua-rose-dark shrink-0">
+                            R$ {parseFloat(p.preco_varejo).toFixed(2)} ({p.quantidade_estoque} un)
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Sub-painel de Detalhes + Campos adicionais (Tamanho, Qtd, Inserir) */}
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center pt-2">
+              <div className="grid grid-cols-2 md:grid-cols-12 gap-3 md:gap-4 items-center">
                 
-                {/* Painel Informativo Dinâmico (Agora inline, empurra os componentes de forma fluida) */}
-                <div className="sm:col-span-5 h-9.5 flex items-center">
+                {/* Painel Informativo Dinâmico */}
+                <div className="col-span-2 md:col-span-5 flex items-center min-h-[38px]">
                   {produtoSelecionado ? (
-                    <div className="w-full flex items-center justify-around text-xs bg-lua-cream/40 border border-lua-rose-dark/10 text-lua-rose-dark px-3 py-2 rounded-xl font-medium animate-fade-in shadow-xs">
+                    <div className="w-full flex items-center justify-between text-[11px] md:text-xs bg-lua-cream/40 border border-lua-rose-dark/10 text-lua-rose-dark px-3 py-2 rounded-xl font-medium animate-fade-in shadow-xs">
                       <span>💵 Preço: <strong>R$ {parseFloat(produtoSelecionado.preco_varejo).toFixed(2)}</strong></span>
-                      <span className="text-slate-200">|</span>
+                      <span className="text-slate-200 mx-1">|</span>
                       <span>📦 Estoque: <strong>{produtoSelecionado.quantidade_estoque} un</strong></span>
                     </div>
                   ) : (
-                    <span className="text-xs text-slate-400 italic">Pesquise e selecione um modelo acima.</span>
+                    <span className="text-[11px] md:text-xs text-slate-400 italic">Pesquise e selecione um modelo.</span>
                   )}
                 </div>
 
-                <div className="sm:col-span-2">
-                  <select value={tamanho} onChange={(e) => setTamanho(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark h-9.5">
+                <div className="col-span-1 md:col-span-2">
+                  <select value={tamanho} onChange={(e) => setTamanho(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 md:py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark h-auto md:h-9.5">
                     <option value="P">P</option>
                     <option value="M">M</option>
                     <option value="G">G</option>
@@ -357,12 +354,12 @@ export default function VendasFisicas({ userRole }) {
                   </select>
                 </div>
 
-                <div className="sm:col-span-2">
-                  <input type="number" min="1" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark h-9.5" required />
+                <div className="col-span-1 md:col-span-2">
+                  <input type="number" min="1" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 md:py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark h-auto md:h-9.5 text-center" required />
                 </div>
 
-                <div className="sm:col-span-3">
-                  <Button variant="primary" type="submit" className="w-full h-9.5">+ Inserir Item</Button>
+                <div className="col-span-2 md:col-span-3">
+                  <Button variant="primary" type="submit" className="w-full py-2.5 md:py-2 md:h-9.5 text-sm">+ Inserir</Button>
                 </div>
               </div>
 
@@ -370,31 +367,33 @@ export default function VendasFisicas({ userRole }) {
           </div>
 
           {/* TABELA DE ITENS DA VENDA */}
-          <div className="bg-white border border-lua-rose-dark/10 p-6 rounded-2xl shadow-xs">
-            <h3 className="font-serif text-lg font-bold text-slate-800 mb-4">Sacola Operacional</h3>
+          <div className="bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs">
+            <h3 className="font-serif text-base md:text-lg font-bold text-slate-800 mb-3 md:mb-4">Sacola Operacional</h3>
             {carrinho.length === 0 ? (
-              <p className="text-xs text-slate-400 text-center py-8">Aguardando inserção de pijamas...</p>
+              <p className="text-[11px] md:text-xs text-slate-400 text-center py-8 border border-dashed border-slate-200 rounded-xl">Aguardando inserção de pijamas...</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm text-slate-600">
+              <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0">
+                <table className="w-full text-left text-sm text-slate-600 min-w-[450px]">
                   <thead>
-                    <tr className="bg-lua-cream border-b border-lua-rose-dark/10 text-slate-500 text-xs uppercase">
+                    <tr className="bg-lua-cream border-b border-lua-rose-dark/10 text-slate-500 text-[10px] md:text-xs uppercase whitespace-nowrap">
                       <th className="p-3">Item</th>
-                      <th className="p-3">Tam</th>
-                      <th className="p-3">Qtd</th>
+                      <th className="p-3 text-center">Tam</th>
+                      <th className="p-3 text-center">Qtd</th>
                       <th className="p-3">Valor</th>
-                      <th className="p-3 text-right">Remover</th>
+                      <th className="p-3 text-right">Ação</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {carrinho.map(item => (
                       <tr key={item.idTemp}>
-                        <td className="p-3 font-medium text-slate-800">{item.nome}</td>
-                        <td className="p-3 text-xs font-bold text-lua-rose-dark">{item.tamanho}</td>
-                        <td className="p-3">{item.quantidade}x</td>
-                        <td className="p-3 font-semibold text-slate-800">R$ {item.totalItem.toFixed(2)}</td>
+                        <td className="p-3 font-medium text-slate-800 text-xs md:text-sm max-w-[150px] truncate">{item.nome}</td>
+                        <td className="p-3 text-xs md:text-sm font-bold text-lua-rose-dark text-center">{item.tamanho}</td>
+                        <td className="p-3 text-xs md:text-sm text-center">{item.quantidade}x</td>
+                        <td className="p-3 font-semibold text-slate-800 text-xs md:text-sm whitespace-nowrap">R$ {item.totalItem.toFixed(2)}</td>
                         <td className="p-3 text-right">
-                          <button onClick={() => handleRemoverItem(item.idTemp)} className="text-xs text-rose-500 hover:underline font-bold cursor-pointer">❌</button>
+                          <button onClick={() => handleRemoverItem(item.idTemp)} className="text-[10px] md:text-xs text-rose-500 hover:text-rose-700 font-bold cursor-pointer bg-rose-50 hover:bg-rose-100 px-2 py-1.5 rounded-lg transition-colors border border-rose-100">
+                            Remover
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -406,14 +405,14 @@ export default function VendasFisicas({ userRole }) {
         </div>
 
         {/* PROCESSO DE FECHAMENTO */}
-        <div className="bg-white border border-lua-rose-dark/10 p-6 rounded-2xl shadow-xs flex flex-col justify-between h-fit space-y-6">
+        <div className="bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs flex flex-col justify-between h-fit space-y-5 md:space-y-6">
           <div>
-            <h3 className="font-serif text-lg font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4">Condições Comerciais</h3>
+            <h3 className="font-serif text-base md:text-lg font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4">Condições Comerciais</h3>
             
             <div className="space-y-4">
               <div>
                 <label className="text-xs font-semibold uppercase text-slate-500 block mb-2">Forma de Pagamento</label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-2">
                   {[{ id: 'pix', label: '⚡ Pix' }, { id: 'credito', label: '💳 Crédito' }, { id: 'debito', label: '💳 Débito' }, { id: 'dinheiro', label: '💵 Dinheiro' }].map((pago) => (
                     <button 
                       key={pago.id} 
@@ -422,7 +421,7 @@ export default function VendasFisicas({ userRole }) {
                         setFormaPagamento(pago.id);
                         if(pago.id !== 'credito') setParcelas(1);
                       }} 
-                      className={`text-xs font-semibold py-2.5 px-2 rounded-xl border transition-all text-center cursor-pointer ${formaPagamento === pago.id ? 'border-lua-rose-dark bg-lua-cream text-lua-rose-dark font-bold' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                      className={`text-[11px] md:text-xs font-semibold py-2.5 px-2 rounded-xl border transition-all text-center cursor-pointer ${formaPagamento === pago.id ? 'border-lua-rose-dark bg-lua-cream text-lua-rose-dark font-bold shadow-sm' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                     >
                       {pago.label}
                     </button>
@@ -432,14 +431,14 @@ export default function VendasFisicas({ userRole }) {
 
               {formaPagamento === 'credito' && (
                 <div className="animate-fade-in">
-                  <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Parcelas do Cartão</label>
+                  <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Parcelas</label>
                   <select
                     value={parcelas}
                     onChange={(e) => setParcelas(parseInt(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark"
                   >
                     {[...Array(12)].map((_, i) => (
-                      <option key={i+1} value={i+1}>{i+1}x de R$ {(totalACobrar / (i+1)).toFixed(2)} sem juros</option>
+                      <option key={i+1} value={i+1}>{i+1}x de R$ {(totalACobrar / (i+1)).toFixed(2)}</option>
                     ))}
                   </select>
                 </div>
@@ -454,28 +453,28 @@ export default function VendasFisicas({ userRole }) {
                   placeholder="Ex: 15"
                   value={desconto || ''}
                   onChange={(e) => setDesconto(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark font-mono"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark font-mono"
                 />
               </div>
 
-              <div className="bg-lua-cream/50 p-4 rounded-xl border border-lua-rose-dark/10 mt-6 space-y-1">
-                <div className="flex justify-between text-xs text-slate-400 font-medium">
+              <div className="bg-lua-cream/50 p-3 md:p-4 rounded-xl border border-lua-rose-dark/10 mt-4 md:mt-6 space-y-1">
+                <div className="flex justify-between text-[11px] md:text-xs text-slate-400 font-medium">
                   <span>Subtotal:</span>
                   <span>R$ {subtotalVenda.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-xs text-rose-500 font-medium">
+                <div className="flex justify-between text-[11px] md:text-xs text-rose-500 font-medium">
                   <span>Desconto:</span>
                   <span>- R$ {parseFloat(desconto || 0).toFixed(2)}</span>
                 </div>
                 <div className="border-t border-slate-200/60 my-2 pt-2 flex justify-between items-baseline">
-                  <span className="text-xs uppercase font-bold text-slate-500">Líquido:</span>
-                  <span className="text-2xl font-bold text-slate-800 font-mono">R$ {totalACobrar.toFixed(2)}</span>
+                  <span className="text-[11px] md:text-xs uppercase font-bold text-slate-500">Líquido:</span>
+                  <span className="text-xl md:text-2xl font-bold text-slate-800 font-mono">R$ {totalACobrar.toFixed(2)}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <Button variant="gold" onClick={handleFinalizarVenda} disabled={carrinho.length === 0 || processandoVenda} className="w-full py-3 text-sm font-bold shadow-md">
+          <Button variant="gold" onClick={handleFinalizarVenda} disabled={carrinho.length === 0 || processandoVenda} className="w-full py-3 md:py-3.5 text-sm font-bold shadow-md">
             {processandoVenda ? 'Processando...' : 'Concluir Registro'}
           </Button>
         </div>
@@ -483,36 +482,41 @@ export default function VendasFisicas({ userRole }) {
 
       {/* HISTÓRICO ATUALIZADO */}
       {!carregando && vendasRealizadas.length > 0 && (
-        <div className="bg-white border border-lua-rose-dark/10 p-6 rounded-2xl shadow-xs">
-          <h3 className="font-serif text-lg font-bold text-slate-800 mb-4">Últimas Vendas Sincronizadas (Hoje)</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-600">
+        <div className="bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs">
+          <h3 className="font-serif text-base md:text-lg font-bold text-slate-800 mb-3 md:mb-4">Últimas Vendas (Hoje)</h3>
+          <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0 pb-2">
+            <table className="w-full text-left text-sm text-slate-600 min-w-[600px]">
               <thead>
-                <tr className="bg-lua-cream border-b border-lua-rose-dark/10 text-slate-500 text-xs uppercase">
+                <tr className="bg-lua-cream border-b border-lua-rose-dark/10 text-slate-500 text-[10px] md:text-xs uppercase whitespace-nowrap">
                   <th className="p-3">ID</th>
                   <th className="p-3">Cliente / CPF</th>
                   <th className="p-3">Condição</th>
                   <th className="p-3">Vendedor</th>
-                  <th className="p-3">Desc.</th>
                   <th className="p-3 text-right">Líquido</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {vendasRealizadas.map(venda => (
                   <tr key={venda.id} className="hover:bg-slate-50/20">
-                    <td className="p-3 font-bold text-slate-800">#VD-{venda.id}</td>
+                    <td className="p-3 text-xs md:text-sm font-bold text-slate-800 whitespace-nowrap">#VD-{venda.id}</td>
                     <td className="p-3">
-                      <div className="font-medium text-slate-700">{venda.cliente_nome}</div>
-                      <div className="text-xs text-slate-400 font-mono">{venda.cliente_cpf || 'Sem CPF'}</div>
+                      <div className="font-medium text-slate-700 text-xs md:text-sm truncate max-w-[150px] md:max-w-xs">{venda.cliente_nome}</div>
+                      <div className="text-[10px] md:text-xs text-slate-400 font-mono">{venda.cliente_cpf || 'Sem CPF'}</div>
                     </td>
-                    <td className="p-3 text-xs uppercase font-semibold text-lua-rose-dark">
+                    <td className="p-3 text-[10px] md:text-xs uppercase font-semibold text-lua-rose-dark whitespace-nowrap">
                       {venda.forma_pagamento} {venda.parcelas > 1 ? `(${venda.parcelas}x)` : ''}
                     </td>
-                    <td className="p-3 text-xs font-semibold text-slate-600">
+                    <td className="p-3 text-[11px] md:text-xs font-semibold text-slate-600 whitespace-nowrap">
                       👤 {venda.vendedor_id || 'Não Informado'}
                     </td>
-                    <td className="p-3 text-xs font-mono text-rose-500">R$ {parseFloat(venda.desconto || 0).toFixed(2)}</td>
-                    <td className="p-3 text-right font-bold text-slate-800 font-mono">R$ {parseFloat(venda.total).toFixed(2)}</td>
+                    <td className="p-3 text-right font-bold text-slate-800 font-mono text-xs md:text-sm whitespace-nowrap">
+                      R$ {parseFloat(venda.total).toFixed(2)}
+                      {parseFloat(venda.desconto) > 0 && (
+                        <div className="text-[9px] md:text-[10px] font-normal text-rose-500">
+                          (-R$ {parseFloat(venda.desconto).toFixed(2)})
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

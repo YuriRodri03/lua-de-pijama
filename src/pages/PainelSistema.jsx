@@ -109,34 +109,34 @@ export default function PainelSistema({ userRole }) {
     : 0.00;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6 pb-16">
       
       {/* NAVEGAÇÃO DE ABAS TEMPORAIS + CONTROLES */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white border border-slate-100 p-2 rounded-2xl shadow-xs">
+      <div className="flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-3 md:gap-4 bg-white border border-slate-100 p-2 md:p-3 rounded-2xl shadow-xs">
         
         {/* Chaves de Seleção da Aba (Mensal vs Anual) */}
-        <div className="flex bg-slate-100 p-1 rounded-xl w-full md:w-auto">
+        <div className="flex bg-slate-100 p-1 rounded-xl w-full xl:w-auto">
           <button
             onClick={() => setAbaAtiva('mensal')}
-            className={`flex-1 md:flex-none text-xs font-bold px-5 py-2.5 rounded-lg transition-all cursor-pointer ${abaAtiva === 'mensal' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+            className={`flex-1 text-xs md:text-sm font-bold px-3 py-2.5 rounded-lg transition-all cursor-pointer ${abaAtiva === 'mensal' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
           >
             📊 Visão Mensal
           </button>
           <button
             onClick={() => setAbaAtiva('anual')}
-            className={`flex-1 md:flex-none text-xs font-bold px-5 py-2.5 rounded-lg transition-all cursor-pointer ${abaAtiva === 'anual' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+            className={`flex-1 text-xs md:text-sm font-bold px-3 py-2.5 rounded-lg transition-all cursor-pointer ${abaAtiva === 'anual' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
           >
             📅 Projeção Anual
           </button>
         </div>
 
         {/* Seletores Dinâmicos de Filtro */}
-        <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+        <div className="flex items-center gap-2 md:gap-3 w-full xl:w-auto justify-between xl:justify-end">
           {abaAtiva === 'mensal' && (
             <select 
               value={mes} 
               onChange={(e) => setMes(e.target.value)}
-              className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-lua-rose-dark cursor-pointer"
+              className="flex-1 xl:flex-none bg-slate-50 border border-slate-200 rounded-xl px-2 md:px-3 py-2 md:py-2.5 text-xs md:text-sm font-semibold text-slate-700 focus:outline-none focus:border-lua-rose-dark cursor-pointer"
             >
               <option value="01">Janeiro</option>
               <option value="02">Fevereiro</option>
@@ -156,7 +156,7 @@ export default function PainelSistema({ userRole }) {
           <select 
             value={ano} 
             onChange={(e) => setAno(e.target.value)}
-            className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-lua-rose-dark cursor-pointer"
+            className="flex-1 xl:flex-none bg-slate-50 border border-slate-200 rounded-xl px-2 md:px-4 py-2 md:py-2.5 text-xs md:text-sm font-semibold text-slate-700 focus:outline-none focus:border-lua-rose-dark cursor-pointer"
           >
             <option value="2025">2025</option>
             <option value="2026">2026</option>
@@ -166,11 +166,11 @@ export default function PainelSistema({ userRole }) {
       </div>
 
       {/* GRADE INDICADORA EXECUTIVA EXPANDIDA */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
         <StatCard 
           label={abaAtiva === 'mensal' ? "Capital Estocado (Varejo)" : "Patrimônio Total Anual"}
           value={`R$ ${valorTotalEstoqueVarejo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
-          statusText="Valor total de prateleira ativa" 
+          statusText="Valor total de prateleira" 
           statusType="gold" 
         />
         <StatCard 
@@ -180,7 +180,7 @@ export default function PainelSistema({ userRole }) {
           statusType="neutral" 
         />
         <StatCard 
-          label={abaAtiva === 'mensal' ? "Custos de Operação (Mês)" : "Custos Fixos Projetados (Ano)"}
+          label={abaAtiva === 'mensal' ? "Custos de Operação (Mês)" : "Custos Fixos Projetados"}
           value={`R$ ${custosOperacionais.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
           statusText="Orçamento fixo estrutural" 
           statusType="alert" 
@@ -194,25 +194,25 @@ export default function PainelSistema({ userRole }) {
       </div>
 
       {/* SEÇÃO GRÁFICA AVANÇADA: DISTRIBUIÇÃO PATRIMONIAL */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
         
         {/* Gráfico de Barras de Distribuição */}
-        <div className="lg:col-span-2 bg-white border border-lua-rose-dark/10 rounded-2xl p-6 shadow-xs text-left">
-          <div className="flex justify-between items-start mb-6">
+        <div className="lg:col-span-2 bg-white border border-lua-rose-dark/10 rounded-2xl p-4 md:p-6 shadow-xs text-left">
+          <div className="flex flex-col sm:flex-row justify-between items-start mb-4 md:mb-6 gap-3">
             <div>
-              <h3 className="font-serif text-lg font-bold text-slate-800">Alocação de Ativos por Modelo</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Peso financeiro e concentração de cada pijama sobre o inventário ativo.</p>
+              <h3 className="font-serif text-base md:text-lg font-bold text-slate-800">Alocação de Ativos por Modelo</h3>
+              <p className="text-[11px] md:text-xs text-slate-400 mt-0.5">Peso financeiro e concentração de cada pijama.</p>
             </div>
-            <span className="text-[10px] bg-lua-cream text-lua-rose-dark font-bold px-2 py-1 rounded uppercase tracking-wider">
+            <span className="text-[10px] bg-lua-cream text-lua-rose-dark font-bold px-2 py-1 rounded uppercase tracking-wider self-start sm:self-auto">
               {abaAtiva}
             </span>
           </div>
           
           <div className="space-y-4 max-h-[320px] overflow-y-auto pr-1">
             {carregando ? (
-              <div className="text-xs text-slate-400 text-center py-16">Estruturando dados analíticos...</div>
+              <div className="text-xs text-slate-400 text-center py-12 md:py-16">Estruturando dados analíticos...</div>
             ) : produtos.length === 0 ? (
-              <div className="text-xs text-slate-400 text-center py-16">Nenhum dado financeiro para o ciclo selecionado.</div>
+              <div className="text-xs text-slate-400 text-center py-12 md:py-16">Nenhum dado financeiro para o ciclo.</div>
             ) : (
               produtos.map(prod => {
                 const valorProduto = prod.preco_varejo * prod.quantidade_estoque;
@@ -220,10 +220,10 @@ export default function PainelSistema({ userRole }) {
                 
                 return (
                   <div key={prod.id} className="space-y-1.5">
-                    <div className="flex justify-between text-xs font-medium text-slate-700">
-                      <span className="truncate max-w-[200px] md:max-w-sm">✨ {prod.nome}</span>
-                      <span className="font-mono text-slate-500 font-semibold">
-                        R$ {valorProduto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} ({porcentagem.toFixed(1)}%)
+                    <div className="flex justify-between text-[11px] md:text-xs font-medium text-slate-700 gap-2">
+                      <span className="truncate flex-1 min-w-0">✨ {prod.nome}</span>
+                      <span className="font-mono text-slate-500 font-semibold shrink-0">
+                        R$ {valorProduto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} <span className="hidden sm:inline">({porcentagem.toFixed(1)}%)</span>
                       </span>
                     </div>
                     <div className="w-full bg-slate-50 border border-slate-100 h-2.5 rounded-full overflow-hidden">
@@ -240,25 +240,25 @@ export default function PainelSistema({ userRole }) {
         </div>
 
         {/* Card Lateral de Eficiência Física de Estoque */}
-        <div className="bg-white border border-lua-rose-dark/10 rounded-2xl p-6 shadow-xs text-left flex flex-col justify-between">
+        <div className="bg-white border border-lua-rose-dark/10 rounded-2xl p-4 md:p-6 shadow-xs text-left flex flex-col justify-between">
           <div>
-            <h3 className="font-serif text-lg font-bold text-slate-800 mb-1">Balanço Volumétrico</h3>
-            <p className="text-xs text-slate-400">Total físico de peças prontas para venda na prateleira.</p>
+            <h3 className="font-serif text-base md:text-lg font-bold text-slate-800 mb-1">Balanço Volumétrico</h3>
+            <p className="text-[11px] md:text-xs text-slate-400">Total físico de peças prontas na prateleira.</p>
             
-            <div className="my-6 text-center">
-              <span className="text-5xl font-mono font-bold text-slate-800 block">{carregando ? "..." : totalPecasEstoque}</span>
-              <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold block mt-1">Unidades Disponíveis</span>
+            <div className="my-6 md:my-8 text-center">
+              <span className="text-4xl md:text-5xl font-mono font-bold text-slate-800 block">{carregando ? "..." : totalPecasEstoque}</span>
+              <span className="text-[9px] md:text-[10px] text-slate-400 uppercase tracking-widest font-bold block mt-1">Unidades Disponíveis</span>
             </div>
           </div>
 
-          <div className="border-t border-slate-100 pt-4 space-y-3 text-xs">
+          <div className="border-t border-slate-100 pt-4 space-y-3 text-[11px] md:text-xs">
             <div className="flex justify-between items-center text-slate-500">
               <span>Modelos Cadastrados:</span>
               <strong className="text-slate-700 font-mono">{produtos.length} referências</strong>
             </div>
             <div className="flex justify-between items-center text-slate-500">
               <span>Estoque Crítico (&le; 4 un):</span>
-              <strong className="text-rose-600 bg-rose-50 px-2 py-0.5 rounded font-mono">
+              <strong className="text-rose-600 bg-rose-50 px-2 py-0.5 rounded font-mono border border-rose-100">
                 {produtos.filter(p => p.quantidade_estoque <= 4).length} itens
               </strong>
             </div>
@@ -268,90 +268,92 @@ export default function PainelSistema({ userRole }) {
       </div>
 
       {/* 3. MÓDULO SÍNCRONO DE GERENCIAMENTO DE CATÁLOGO */}
-      <div className="bg-white border border-lua-rose-dark/10 rounded-2xl p-6 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-5 mb-6 gap-4">
+      <div className="bg-white border border-lua-rose-dark/10 rounded-2xl p-4 md:p-6 shadow-xs">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-slate-100 pb-4 md:pb-5 mb-4 md:mb-6 gap-4">
           <div className="text-left">
-            <h2 className="text-xl font-bold text-slate-800">Tabela Operacional de Ajuste Rápido</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Entradas numéricas diretas para modificação em tempo real síncrona com o Supabase.</p>
+            <h2 className="text-lg md:text-xl font-bold text-slate-800">Tabela Operacional de Ajuste</h2>
+            <p className="text-[11px] md:text-xs text-slate-400 mt-0.5">Entradas numéricas diretas para modificação em tempo real.</p>
           </div>
-          <Button variant="gold" onClick={handleSalvarAlteracoes} disabled={salvando || carregando} className="cursor-pointer">
+          <Button variant="gold" onClick={handleSalvarAlteracoes} disabled={salvando || carregando} className="w-full lg:w-auto cursor-pointer py-3 lg:py-2 text-sm">
             {salvando ? 'Salvando Lote...' : '💾 Sincronizar Alterações'}
           </Button>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-600 min-w-[600px]">
+        <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0 pb-2">
+          <table className="w-full text-left text-sm text-slate-600 min-w-[650px] md:min-w-full">
             <thead>
-              <tr className="bg-lua-cream border-b border-lua-rose-dark/10 text-slate-500 text-xs uppercase tracking-wider">
-                <th className="p-4 rounded-l-lg">Pijama / Produto</th>
-                <th className="p-4">Varejo (R$)</th>
-                <th className="p-4">Atacado (R$)</th>
-                <th className="p-4">Qtd Estoque</th>
-                <th className="p-4 rounded-r-lg">Diagnóstico</th>
+              <tr className="bg-lua-cream border-b border-lua-rose-dark/10 text-slate-500 text-[10px] md:text-xs uppercase tracking-wider whitespace-nowrap">
+                <th className="p-3 md:p-4 rounded-l-lg">Pijama / Produto</th>
+                <th className="p-3 md:p-4">Varejo (R$)</th>
+                <th className="p-3 md:p-4">Atacado (R$)</th>
+                <th className="p-3 md:p-4">Qtd Estoque</th>
+                <th className="p-3 md:p-4 rounded-r-lg">Diagnóstico</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {carregando ? (
                 <tr>
-                  <td colSpan="5" className="p-12 text-center text-xs text-slate-400">
+                  <td colSpan="5" className="p-8 md:p-12 text-center text-xs text-slate-400">
                     Buscando portfólio de produtos...
                   </td>
                 </tr>
               ) : produtos.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="p-12 text-center text-xs text-slate-400">
+                  <td colSpan="5" className="p-8 md:p-12 text-center text-xs text-slate-400">
                     Nenhum produto indexado para a visão selecionada.
                   </td>
                 </tr>
               ) : (
                 produtos.map((prod) => (
                   <tr key={prod.id} className="hover:bg-slate-50/40 transition-colors">
-                    <td className="p-4 font-serif font-bold text-slate-700 text-left">{prod.nome}</td>
+                    <td className="p-3 md:p-4 font-serif font-bold text-slate-700 text-left text-xs md:text-sm max-w-[150px] truncate">
+                      {prod.nome}
+                    </td>
                     
                     {/* Preço Varejo */}
-                    <td className="p-4">
+                    <td className="p-3 md:p-4 whitespace-nowrap">
                       <input 
                         type="number" 
                         step="0.01"
                         value={prod.preco_varejo}
                         onChange={(e) => handleInputChange(prod.id, 'preco_varejo', parseFloat(e.target.value) || 0)}
-                        className="w-24 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-lua-rose-dark"
+                        className="w-20 md:w-24 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 md:py-1 text-[11px] md:text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-lua-rose-dark"
                       />
                     </td>
 
                     {/* Preço Atacado */}
-                    <td className="p-4">
+                    <td className="p-3 md:p-4 whitespace-nowrap">
                       <input 
                         type="number" 
                         step="0.01"
                         value={prod.preco_atacado}
                         onChange={(e) => handleInputChange(prod.id, 'preco_atacado', parseFloat(e.target.value) || 0)}
-                        className="w-24 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-lua-rose-dark"
+                        className="w-20 md:w-24 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 md:py-1 text-[11px] md:text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-lua-rose-dark"
                       />
                     </td>
                     
                     {/* Quantidade Estoque */}
-                    <td className="p-4">
+                    <td className="p-3 md:p-4 whitespace-nowrap">
                       <input 
                         type="number" 
                         value={prod.quantidade_estoque}
                         onChange={(e) => handleInputChange(prod.id, 'quantidade_estoque', parseInt(e.target.value) || 0)}
-                        className="w-20 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-lua-rose-dark"
+                        className="w-16 md:w-20 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 md:py-1 text-[11px] md:text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-lua-rose-dark text-center"
                       />
                     </td>
 
                     {/* Diagnóstico Automatizado */}
-                    <td className="p-4 text-left">
+                    <td className="p-3 md:p-4 text-left whitespace-nowrap">
                       {prod.quantidade_estoque <= 0 ? (
-                        <span className="bg-red-50 text-red-700 text-[10px] font-bold px-2 py-0.5 rounded border border-red-200">
+                        <span className="bg-red-50 text-red-700 text-[9px] md:text-[10px] font-bold px-2 py-1 md:py-0.5 rounded border border-red-200">
                           Esgotado
                         </span>
                       ) : prod.quantidade_estoque <= 4 ? (
-                        <span className="bg-amber-50 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded border border-amber-200">
+                        <span className="bg-amber-50 text-amber-700 text-[9px] md:text-[10px] font-bold px-2 py-1 md:py-0.5 rounded border border-amber-200">
                           Estoque Mínimo
                         </span>
                       ) : (
-                        <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-200">
+                        <span className="bg-emerald-50 text-emerald-700 text-[9px] md:text-[10px] font-bold px-2 py-1 md:py-0.5 rounded border border-emerald-200">
                           Disponível
                         </span>
                       )}

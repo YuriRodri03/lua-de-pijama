@@ -105,20 +105,20 @@ export default function Estoque() {
   const custoPatrimonial = itens.reduce((acc, curr) => acc + ((curr.preco_varejo || 0) * (curr.quantidade_estoque || 0)), 0);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 md:space-y-8 pb-16">
       
       {/* Resumo do Estoque */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
         <StatCard 
-          label="Total de Peças em Estoque" 
+          label="Total de Peças" 
           value={carregando ? "..." : `${totalPecas} unidades`}
-          statusText="Disponíveis para venda física/online"
+          statusText="Disponíveis no estoque"
           statusType="neutral"
         />
         <StatCard 
-          label="Valor de Venda do Estoque" 
+          label="Valor de Venda" 
           value={carregando ? "..." : `R$ ${custoPatrimonial.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-          statusText="Patrimônio ativo estimado (Varejo)"
+          statusText="Patrimônio ativo (Varejo)"
           statusType="gold"
         />
         <StatCard 
@@ -129,11 +129,11 @@ export default function Estoque() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
         
         {/* FORMULÁRIO DE CADASTRO */}
-        <div className="bg-white border border-lua-rose-dark/10 p-6 rounded-2xl shadow-xs h-fit">
-          <h3 className="font-serif text-lg font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4">
+        <div className="bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs h-fit">
+          <h3 className="font-serif text-lg md:text-xl font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4">
             Registrar Novo Produto
           </h3>
           
@@ -143,10 +143,10 @@ export default function Estoque() {
               <input type="text" placeholder="ex: Pijama Americano Satin" value={nome} onChange={(e) => setNome(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark" required />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3 md:gap-4">
               <div>
                 <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Cor</label>
-                <input type="text" placeholder="ex: Rosé Queimado" value={cor} onChange={(e) => setCor(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark" required />
+                <input type="text" placeholder="ex: Rosé" value={cor} onChange={(e) => setCor(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark" required />
               </div>
               <div>
                 <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Tamanho</label>
@@ -159,7 +159,7 @@ export default function Estoque() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
               <div>
                 <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Preço Varejo (R$)</label>
                 <input type="number" step="0.01" placeholder="0.00" value={precoVarejo} onChange={(e) => setPrecoVarejo(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark" required />
@@ -170,7 +170,7 @@ export default function Estoque() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
               <div>
                 <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Tag Vitrine</label>
                 <input type="text" placeholder="ex: Novo, Mais Vendido" value={tag} onChange={(e) => setTag(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark" />
@@ -182,24 +182,24 @@ export default function Estoque() {
             </div>
 
             <div>
-              <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">URL da Imagem do Produto</label>
-              <input type="url" placeholder="https://link-da-imagem.com/foto.jpg" value={fotoUrl} onChange={(e) => setFotoUrl(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark" />
+              <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">URL da Imagem</label>
+              <input type="url" placeholder="https://link.com/foto.jpg" value={fotoUrl} onChange={(e) => setFotoUrl(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark" />
             </div>
 
-            <Button variant="primary" type="submit" className="w-full mt-2">
+            <Button variant="primary" type="submit" className="w-full mt-2 py-3">
               Salvar no Estoque
             </Button>
           </form>
         </div>
 
         {/* LISTAGEM E CONTROLE DO ESTOQUE */}
-        <div className="lg:col-span-2 bg-white border border-lua-rose-dark/10 p-6 rounded-2xl shadow-xs">
-          <h3 className="font-serif text-lg font-bold text-slate-800 mb-4">Produtos Registrados</h3>
+        <div className="lg:col-span-2 bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs">
+          <h3 className="font-serif text-lg md:text-xl font-bold text-slate-800 mb-4">Produtos Registrados</h3>
           
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-600">
+          <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0 pb-2">
+            <table className="w-full text-left text-sm text-slate-600 min-w-[600px]">
               <thead>
-                <tr className="bg-lua-cream border-b border-lua-rose-dark/10 text-slate-500 text-xs uppercase">
+                <tr className="bg-lua-cream border-b border-lua-rose-dark/10 text-slate-500 text-xs uppercase whitespace-nowrap">
                   <th className="p-3">Descrição / Modelo</th>
                   <th className="p-3">Cor</th>
                   <th className="p-3 text-center">Tam</th>
@@ -227,26 +227,26 @@ export default function Estoque() {
                     <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="p-3 flex items-center gap-3">
                         {item.foto_url && (
-                          <img src={item.foto_url} alt={item.nome} className="w-8 h-8 rounded-lg object-cover border border-slate-100" />
+                          <img src={item.foto_url} alt={item.nome} className="w-8 h-8 md:w-10 md:h-10 rounded-lg object-cover border border-slate-100 shrink-0" />
                         )}
                         <div>
-                          <span className="font-serif font-semibold text-slate-800 block">{item.nome}</span>
-                          {item.tag && <span className="text-[10px] bg-lua-rose-light/50 text-lua-rose-dark px-1.5 py-0.2 rounded font-medium">{item.tag}</span>}
+                          <span className="font-serif font-semibold text-slate-800 block text-xs md:text-sm line-clamp-2 min-w-[120px]">{item.nome}</span>
+                          {item.tag && <span className="text-[9px] md:text-[10px] bg-lua-rose-light/50 text-lua-rose-dark px-1.5 py-0.5 rounded font-medium mt-0.5 inline-block">{item.tag}</span>}
                         </div>
                       </td>
-                      <td className="p-3 text-xs text-slate-500">{item.cor}</td>
-                      <td className="p-3 text-center text-xs font-bold text-lua-rose-dark">{item.tamanho}</td>
-                      <td className="p-3 font-medium text-slate-800">R$ {Number(item.preco_varejo).toFixed(2)}</td>
-                      <td className="p-3 font-medium text-slate-505">R$ {Number(item.preco_atacado).toFixed(2)}</td>
+                      <td className="p-3 text-xs md:text-sm text-slate-500 whitespace-nowrap">{item.cor}</td>
+                      <td className="p-3 text-center text-xs md:text-sm font-bold text-lua-rose-dark">{item.tamanho}</td>
+                      <td className="p-3 font-medium text-slate-800 text-xs md:text-sm whitespace-nowrap">R$ {Number(item.preco_varejo).toFixed(2)}</td>
+                      <td className="p-3 font-medium text-slate-500 text-xs md:text-sm whitespace-nowrap">R$ {Number(item.preco_atacado).toFixed(2)}</td>
                       <td className="p-3 text-center">
                         <span className={`px-2 py-0.5 rounded-md font-bold text-xs ${
-                          item.quantidade_estoque <= 3 ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-slate-50 text-slate-700'
+                          item.quantidade_estoque <= 3 ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-slate-50 text-slate-700 border border-slate-200'
                         }`}>
                           {item.quantidade_estoque}
                         </span>
                       </td>
-                      <td className="p-3 text-right">
-                        <button onClick={() => handleDeletar(item.id)} className="text-xs text-rose-500 hover:text-rose-700 font-medium cursor-pointer">
+                      <td className="p-3 text-right whitespace-nowrap">
+                        <button onClick={() => handleDeletar(item.id)} className="text-[11px] md:text-xs text-rose-500 hover:text-rose-700 font-medium cursor-pointer bg-rose-50 hover:bg-rose-100 px-2 py-1.5 md:px-3 md:py-2 rounded-lg transition-colors border border-rose-100">
                           Excluir
                         </button>
                       </td>
@@ -259,7 +259,6 @@ export default function Estoque() {
         </div>
 
       </div>
-
     </div>
   );
 }
