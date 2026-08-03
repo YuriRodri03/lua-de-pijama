@@ -34,7 +34,7 @@ export default function PainelSistema({ userRole }) {
       const { data, error } = await supabase
         .from('produtos')
         .select('*')
-        .gte('criated_at', dataInicio) // Ajuste para 'criado_em' se for o nome da sua coluna
+        .gte('criado_em', dataInicio) // Ajuste para 'criado_em' se for o nome da sua coluna
         .order('id', { ascending: true });
 
       // Se a coluna acima der erro no seu banco, mude para fallback sem filtro de criação se o catálogo for unificado:

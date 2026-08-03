@@ -180,9 +180,23 @@ export default function MainLayout({ children, currentView, setView, userRole, s
                 <button onClick={() => setView('loja')} className={`px-4 py-2 rounded-xl transition-all duration-200 ${currentView === 'loja' ? 'bg-lua-rose-light/40 text-lua-rose-dark font-semibold' : 'hover:bg-slate-50 hover:text-slate-900'}`}>
                   Loja Online
                 </button>
+                
+                {/* NOVO BOTÃO DE MEUS PEDIDOS ADICIONADO AQUI */}
+                <button onClick={() => setView('pedidos')} className={`px-4 py-2 rounded-xl transition-all duration-200 ${currentView === 'pedidos' ? 'bg-lua-rose-light/40 text-lua-rose-dark font-semibold' : 'hover:bg-slate-50 hover:text-slate-900'}`}>
+                  Meus Pedidos
+                </button>
               </nav>
 
               <div className="flex items-center gap-2 md:gap-4">
+                
+                {/* 🌟 NOVO BOTÃO DE PEDIDOS (Aparece no celular e no PC) */}
+                <button 
+                  onClick={() => setView('pedidos')}
+                  className={`text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors px-2 md:px-3 py-1.5 md:py-2 rounded-xl hover:bg-slate-50 ${currentView === 'pedidos' ? 'text-lua-rose-dark bg-slate-50' : 'text-slate-500 hover:text-slate-900'}`}
+                >
+                  <span className="hidden md:inline">Meus </span>Pedidos
+                </button>
+
                 <button 
                   onClick={() => setView('login')}
                   className={`text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors px-2 md:px-3 py-1.5 md:py-2 rounded-xl hover:bg-slate-50 ${currentView === 'login' ? 'text-lua-rose-dark bg-slate-50' : 'text-slate-500 hover:text-slate-900'}`}
