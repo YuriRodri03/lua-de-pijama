@@ -111,13 +111,19 @@ export default function LojaOnline({ userRole, onAdicionarProduto }) {
           {produtos.map((prod) => (
             <div key={prod.id} className="flex flex-col space-y-2 relative group">
               
-              {/* MODIFICADO: Mapeamento de propriedades para o novo ProductCard de compra */}
+              {/* MODIFICADO: Bloqueio de clique visual na loja se não houver estoque */}
               <ProductCard 
                 nome={prod.nome}
                 preco={formatarMoeda(prod.preco_varejo)} 
                 imagem={prod.foto_url ? `${prod.foto_url}?t=${Date.now()}` : null} 
                 tag={prod.quantidade_estoque <= 0 ? "Esgotado" : prod.tag}
-                onComprar={() => onAdicionarProduto(prod)} 
+                onComprar={() => {
+                  if (prod.quantidade_estoque <= 0) {
+                    alert('Poxa, este produto está esgotado no momento!');
+                  } else {
+                    onAdicionarProduto(prod);
+                  }
+                }} 
               />
 
               {/* CONTROLE GERENCIAL DE UPLOAD */}

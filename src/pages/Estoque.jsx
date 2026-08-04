@@ -17,6 +17,16 @@ export default function Estoque() {
   const [tag, setTag] = useState('Novidade');
   const [qtd, setQtd] = useState('');
 
+  // -------------------------------------------------------------------
+  // NOVOS ESTADOS PARA EDIÇÃO EM LINHA
+  // -------------------------------------------------------------------
+  const [editandoId, setEditandoId] = useState(null);
+  const [editValores, setEditValores] = useState({
+    varejo: '',
+    atacado: '',
+    qtd: ''
+  });
+
   // 1. BUSCAR PRODUTOS DO SUPABASE AO CARREGAR A TELA
   async function buscarEstoque() {
     try {
@@ -97,6 +107,49 @@ export default function Estoque() {
         console.error('Erro ao deletar produto:', error.message);
         alert('Não foi possível remover o produto do banco de dados.');
       }
+    }
+  };
+
+  // -------------------------------------------------------------------
+  // 4. FUNÇÕES PARA EDITAR (UPDATE)
+  // -------------------------------------------------------------------
+  const iniciarEdicao = (item) => {
+    setEditandoId(item.id);
+    setEditValores({
+      varejo: item.preco_varejo,
+      atacado: item.preco_atacado,
+      qtd: item.quantidade_estoque
+    });
+  };
+
+  const cancelarEdicao = () => {
+    setEditandoId(null);
+  };
+
+  const salvarEdicao = async (id) => {
+    const novosValores = {
+      preco_varejo: parseFloat(editValores.varejo) || 0,
+      preco_atacado: parseFloat(editValores.atacado) || 0,
+      quantidade_estoque: parseInt(editValores.qtd) || 0
+    };
+
+    try {
+      const { error } = await supabase
+        .from('produtos')
+        .update(novosValores)
+        .eq('id', id);
+
+      if (error) throw error;
+
+      // Atualiza o estado local para não precisar recarregar do banco
+      setItens(itens.map(item => 
+        item.id === id ? { ...item, ...novosValores } : item
+      ));
+      
+      setEditandoId(null);
+    } catch (error) {
+      console.error('Erro ao atualizar produto:', error.message);
+      alert('Erro ao salvar as alterações.');
     }
   };
 
@@ -197,7 +250,7 @@ export default function Estoque() {
           <h3 className="font-serif text-lg md:text-xl font-bold text-slate-800 mb-4">Produtos Registrados</h3>
           
           <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0 pb-2">
-            <table className="w-full text-left text-sm text-slate-600 min-w-[600px]">
+            <table className="w-full text-left text-sm text-slate-600 min-w-[700px]">
               <thead>
                 <tr className="bg-lua-cream border-b border-lua-rose-dark/10 text-slate-500 text-xs uppercase whitespace-nowrap">
                   <th className="p-3">Descrição / Modelo</th>
@@ -223,35 +276,92 @@ export default function Estoque() {
                     </td>
                   </tr>
                 ) : (
-                  itens.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="p-3 flex items-center gap-3">
-                        {item.foto_url && (
-                          <img src={item.foto_url} alt={item.nome} className="w-8 h-8 md:w-10 md:h-10 rounded-lg object-cover border border-slate-100 shrink-0" />
-                        )}
-                        <div>
-                          <span className="font-serif font-semibold text-slate-800 block text-xs md:text-sm line-clamp-2 min-w-[120px]">{item.nome}</span>
-                          {item.tag && <span className="text-[9px] md:text-[10px] bg-lua-rose-light/50 text-lua-rose-dark px-1.5 py-0.5 rounded font-medium mt-0.5 inline-block">{item.tag}</span>}
-                        </div>
-                      </td>
-                      <td className="p-3 text-xs md:text-sm text-slate-500 whitespace-nowrap">{item.cor}</td>
-                      <td className="p-3 text-center text-xs md:text-sm font-bold text-lua-rose-dark">{item.tamanho}</td>
-                      <td className="p-3 font-medium text-slate-800 text-xs md:text-sm whitespace-nowrap">R$ {Number(item.preco_varejo).toFixed(2)}</td>
-                      <td className="p-3 font-medium text-slate-500 text-xs md:text-sm whitespace-nowrap">R$ {Number(item.preco_atacado).toFixed(2)}</td>
-                      <td className="p-3 text-center">
-                        <span className={`px-2 py-0.5 rounded-md font-bold text-xs ${
-                          item.quantidade_estoque <= 3 ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-slate-50 text-slate-700 border border-slate-200'
-                        }`}>
-                          {item.quantidade_estoque}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right whitespace-nowrap">
-                        <button onClick={() => handleDeletar(item.id)} className="text-[11px] md:text-xs text-rose-500 hover:text-rose-700 font-medium cursor-pointer bg-rose-50 hover:bg-rose-100 px-2 py-1.5 md:px-3 md:py-2 rounded-lg transition-colors border border-rose-100">
-                          Excluir
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                  itens.map((item) => {
+                    const isEditing = editandoId === item.id;
+                    
+                    return (
+                      <tr key={item.id} className={`${isEditing ? 'bg-lua-rose-light/20' : 'hover:bg-slate-50/50'} transition-colors`}>
+                        <td className="p-3 flex items-center gap-3">
+                          {item.foto_url && (
+                            <img src={item.foto_url} alt={item.nome} className="w-8 h-8 md:w-10 md:h-10 rounded-lg object-cover border border-slate-100 shrink-0" />
+                          )}
+                          <div>
+                            <span className="font-serif font-semibold text-slate-800 block text-xs md:text-sm line-clamp-2 min-w-[120px]">{item.nome}</span>
+                            {item.tag && <span className="text-[9px] md:text-[10px] bg-lua-rose-light/50 text-lua-rose-dark px-1.5 py-0.5 rounded font-medium mt-0.5 inline-block">{item.tag}</span>}
+                          </div>
+                        </td>
+                        <td className="p-3 text-xs md:text-sm text-slate-500 whitespace-nowrap">{item.cor}</td>
+                        <td className="p-3 text-center text-xs md:text-sm font-bold text-lua-rose-dark">{item.tamanho}</td>
+                        
+                        {/* COLUNAS EDITÁVEIS */}
+                        <td className="p-3 whitespace-nowrap">
+                          {isEditing ? (
+                            <input 
+                              type="number" step="0.01"
+                              value={editValores.varejo}
+                              onChange={(e) => setEditValores({...editValores, varejo: e.target.value})}
+                              className="w-20 bg-white border border-lua-rose-dark/30 rounded px-2 py-1 text-sm focus:outline-none"
+                            />
+                          ) : (
+                            <span className="font-medium text-slate-800 text-xs md:text-sm">R$ {Number(item.preco_varejo).toFixed(2)}</span>
+                          )}
+                        </td>
+                        
+                        <td className="p-3 whitespace-nowrap">
+                          {isEditing ? (
+                            <input 
+                              type="number" step="0.01"
+                              value={editValores.atacado}
+                              onChange={(e) => setEditValores({...editValores, atacado: e.target.value})}
+                              className="w-20 bg-white border border-lua-rose-dark/30 rounded px-2 py-1 text-sm focus:outline-none"
+                            />
+                          ) : (
+                            <span className="font-medium text-slate-500 text-xs md:text-sm">R$ {Number(item.preco_atacado).toFixed(2)}</span>
+                          )}
+                        </td>
+                        
+                        <td className="p-3 text-center">
+                          {isEditing ? (
+                            <input 
+                              type="number"
+                              value={editValores.qtd}
+                              onChange={(e) => setEditValores({...editValores, qtd: e.target.value})}
+                              className="w-16 mx-auto bg-white border border-lua-rose-dark/30 rounded px-2 py-1 text-sm focus:outline-none text-center"
+                            />
+                          ) : (
+                            <span className={`px-2 py-0.5 rounded-md font-bold text-xs ${
+                              item.quantidade_estoque <= 3 ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-slate-50 text-slate-700 border border-slate-200'
+                            }`}>
+                              {item.quantidade_estoque}
+                            </span>
+                          )}
+                        </td>
+                        
+                        {/* AÇÕES (EDITAR / SALVAR) */}
+                        <td className="p-3 text-right whitespace-nowrap flex justify-end gap-2">
+                          {isEditing ? (
+                            <>
+                              <button onClick={() => salvarEdicao(item.id)} className="text-[11px] md:text-xs text-green-700 hover:text-green-800 font-medium cursor-pointer bg-green-50 hover:bg-green-100 px-2 py-1.5 md:px-3 md:py-2 rounded-lg transition-colors border border-green-200">
+                                Salvar
+                              </button>
+                              <button onClick={cancelarEdicao} className="text-[11px] md:text-xs text-slate-600 hover:text-slate-800 font-medium cursor-pointer bg-slate-100 hover:bg-slate-200 px-2 py-1.5 md:px-3 md:py-2 rounded-lg transition-colors border border-slate-200">
+                                Cancelar
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button onClick={() => iniciarEdicao(item)} className="text-[11px] md:text-xs text-blue-600 hover:text-blue-800 font-medium cursor-pointer bg-blue-50 hover:bg-blue-100 px-2 py-1.5 md:px-3 md:py-2 rounded-lg transition-colors border border-blue-100">
+                                Editar
+                              </button>
+                              <button onClick={() => handleDeletar(item.id)} className="text-[11px] md:text-xs text-rose-500 hover:text-rose-700 font-medium cursor-pointer bg-rose-50 hover:bg-rose-100 px-2 py-1.5 md:px-3 md:py-2 rounded-lg transition-colors border border-rose-100">
+                                Excluir
+                              </button>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

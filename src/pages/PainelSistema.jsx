@@ -2,48 +2,115 @@ import React, { useState, useEffect, useCallback } from 'react';
 import StatCard from '../components/StatCard';
 import Button from '../components/Button';
 import { supabase } from '../services/supabase';
+import { 
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, 
+  PieChart, Pie, Cell, CartesianGrid, ComposedChart, Line, Legend 
+} from 'recharts';
 
 export default function PainelSistema({ userRole }) {
+  // Estado para controlar a visão principal (Dashboard vs Pedidos)
+  const [visaoPrincipal, setVisaoPrincipal] = useState('dashboard');
+
   const [produtos, setProdutos] = useState([]);
+  const [vendas, setVendas] = useState([]);
+  const [custosOperacionais, setCustosOperacionais] = useState(0);
+  const [receitaTotal, setReceitaTotal] = useState(0);
+  const [dadosFluxoCaixa, setDadosFluxoCaixa] = useState([]);
+  
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
+  
+  const [termoBusca, setTermoBusca] = useState('');
+  const [abaAtiva, setAbaAtiva] = useState('mensal');
 
-  // Controle de Abas de Visão Temporal
-  const [abaAtiva, setAbaAtiva] = useState('mensal'); // 'mensal' | 'anual'
-
-  // Filtros Temporais (Alinhados com o Workspace de 2026)
-  const [mes, setMes] = useState('07');
+  const [mes, setMes] = useState('08');
   const [ano, setAno] = useState('2026');
 
-  // 1. BUSCAR DADOS DO SUPABASE COM FILTRO DE ACORDO COMA ABA SELECIONADA
+  const CORES_GRAFICO = ['#8b5a62', '#a87b82', '#c59ca3', '#e2bec4', '#f1d6db', '#cbd5e1'];
+
   const buscarDados = useCallback(async () => {
     try {
       setCarregando(true);
-      let dataInicio, dataFim;
+      
+      const ultimoDia = new Date(parseInt(ano), parseInt(mes), 0).getDate();
+      
+      let dataInicio = abaAtiva === 'mensal' ? `${ano}-${mes}-01T00:00:00Z` : `${ano}-01-01T00:00:00Z`;
+      let dataFim = abaAtiva === 'mensal' ? `${ano}-${mes}-${ultimoDia}T23:59:59Z` : `${ano}-12-31T23:59:59Z`;
 
-      if (abaAtiva === 'mensal') {
-        // Filtro estrito para o mês escolhido
-        dataInicio = `${ano}-${mes}-01T00:00:00Z`;
-        dataFim = `${ano}-${mes}-31T23:59:59Z`;
-      } else {
-        // Visão Anual Ampla (Todo o ano corrente)
-        dataInicio = `${ano}-01-01T00:00:00Z`;
-        dataFim = `${ano}-12-31T23:59:59Z`;
-      }
-
-      const { data, error } = await supabase
+      // A. Busca Produtos
+      const { data: prodData, error: prodError } = await supabase
         .from('produtos')
         .select('*')
-        .gte('criado_em', dataInicio) // Ajuste para 'criado_em' se for o nome da sua coluna
         .order('id', { ascending: true });
 
-      // Se a coluna acima der erro no seu banco, mude para fallback sem filtro de criação se o catálogo for unificado:
-      // const { data, error } = await supabase.from('produtos').select('*').order('id', { ascending: true });
+      if (prodError) throw prodError;
+      setProdutos(prodData || []);
 
-      if (error) throw error;
-      setProdutos(data || []);
+      // B. Busca Despesas
+      const dataInicioDesp = dataInicio.split('T')[0];
+      const dataFimDesp = dataFim.split('T')[0];
+      
+      const { data: despData, error: despError } = await supabase
+        .from('despesas')
+        .select('valor, data_vencimento')
+        .gte('data_vencimento', dataInicioDesp)
+        .lte('data_vencimento', dataFimDesp);
+
+      if (despError) throw despError;
+
+      // C. Busca Receitas (Trazendo Itens, Cliente e Status de Entrega)
+      const { data: vendData, error: vendError } = await supabase
+        .from('vendas')
+        .select('id, total, criado_em, status_pagamento, cliente_nome, cliente_telefone, status_entrega, itens') 
+        .gte('criado_em', dataInicio)
+        .lte('criado_em', dataFim)
+        .order('criado_em', { ascending: false });
+
+      if (vendError) console.warn('Erro ao buscar vendas:', vendError);
+      setVendas(vendData || []);
+
+      // D. Fluxo de Caixa (Anual)
+      const mesesAbrev = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+      let fluxoAnual = mesesAbrev.map(m => ({ mes: m, receitas: 0, despesas: 0, saldo: 0 }));
+
+      const { data: despAno } = await supabase.from('despesas').select('valor, data_vencimento').gte('data_vencimento', `${ano}-01-01`).lte('data_vencimento', `${ano}-12-31`);
+      
+      const { data: vendAno, error: vendAnoError } = await supabase
+        .from('vendas')
+        .select('total, criado_em')
+        .eq('status_pagamento', 'pago')
+        .gte('criado_em', `${ano}-01-01T00:00:00Z`)
+        .lte('criado_em', `${ano}-12-31T23:59:59Z`);
+        
+      if (vendAnoError) console.warn('Erro ao buscar vendas anuais:', vendAnoError);
+
+      (despAno || []).forEach(d => {
+        const mesIndex = parseInt(d.data_vencimento.split('-')[1]) - 1;
+        fluxoAnual[mesIndex].despesas += parseFloat(d.valor || 0);
+      });
+
+      (vendAno || []).forEach(v => {
+        const mesIndex = new Date(v.criado_em).getMonth();
+        fluxoAnual[mesIndex].receitas += parseFloat(v.total || 0);
+      });
+
+      fluxoAnual = fluxoAnual.map(f => ({
+        ...f,
+        saldo: f.receitas - f.despesas
+      }));
+
+      setDadosFluxoCaixa(fluxoAnual);
+
+      // E. Totais
+      const custoReal = despData?.reduce((acc, curr) => acc + parseFloat(curr.valor), 0) || 0;
+      const receitasPagas = vendData?.filter(v => v.status_pagamento === 'pago') || [];
+      const receitaReal = receitasPagas.reduce((acc, curr) => acc + parseFloat(curr.total), 0) || 0; 
+      
+      setCustosOperacionais(custoReal);
+      setReceitaTotal(receitaReal);
+
     } catch (error) {
-      console.error('Erro ao carregar dados do painel:', error.message);
+      console.error('Erro ao carregar dados financeiros:', error.message);
     } finally {
       setCarregando(false);
     }
@@ -53,33 +120,23 @@ export default function PainelSistema({ userRole }) {
     buscarDados();
   }, [buscarDados]);
 
-  // 2. ALTERAÇÃO EM TEMPO REAL NOS INPUTS NUMÉRICOS (PRESERVA A PRECISÃO MANUAL)
   const handleInputChange = (id, campo, valor) => {
     setProdutos(prev => prev.map(prod => {
-      if (prod.id === id) {
-        return { ...prod, [campo]: valor };
-      }
+      if (prod.id === id) return { ...prod, [campo]: valor };
       return prod;
     }));
   };
 
-  // 3. PERSISTIR ALTERAÇÕES EM LOTE NO SUPABASE
   const handleSalvarAlteracoes = async () => {
     try {
       setSalvando(true);
       const promises = produtos.map(prod => 
-        supabase
-          .from('produtos')
-          .update({ 
-            preco_varejo: prod.preco_varejo, 
-            preco_atacado: prod.preco_atacado, 
-            quantidade_estoque: prod.quantidade_estoque 
-          })
-          .eq('id', prod.id)
+        supabase.from('produtos').update({ 
+          preco_varejo: prod.preco_varejo, preco_atacado: prod.preco_atacado, quantidade_estoque: prod.quantidade_estoque 
+        }).eq('id', prod.id)
       );
-
       await Promise.all(promises);
-      alert('Todas as alterações de catálogo e estoque foram sincronizadas com o banco!');
+      alert('Sincronização concluída com sucesso!');
       buscarDados();
     } catch (error) {
       console.error('Erro ao salvar alterações:', error.message);
@@ -89,283 +146,397 @@ export default function PainelSistema({ userRole }) {
     }
   };
 
-  // 4. CÁLCULOS ANALÍTICOS DAS MÉTRICAS GERAIS
-  const valorTotalEstoqueVarejo = produtos.reduce((acc, curr) => acc + (parseFloat(curr.preco_varejo || 0) * parseInt(curr.quantidade_estoque || 0)), 0);
-  const valorTotalEstoqueAtacado = produtos.reduce((acc, curr) => acc + (parseFloat(curr.preco_atacado || 0) * parseInt(curr.quantidade_estoque || 0)), 0);
-  const totalPecasEstoque = produtos.reduce((acc, curr) => acc + parseInt(curr.quantidade_estoque || 0), 0);
-  
-  // Cálculo de Margem e Eficiência síncrona do portfólio de produtos
-  const margemMediaPotencial = produtos.length > 0 
-    ? (produtos.reduce((acc, curr) => {
-        const v = parseFloat(curr.preco_varejo || 0);
-        const a = parseFloat(curr.preco_atacado || 0);
-        return acc + (v > 0 ? ((v - a) / v) * 100 : 0);
-      }, 0) / produtos.length)
-    : 0;
+  // Função para alternar o status de entrega do pedido
+  const handleAlternarEntrega = async (pedidoId, statusAtual) => {
+    const novoStatus = statusAtual === 'entregue' ? 'pendente' : 'entregue';
+    
+    // Atualiza localmente para resposta rápida na interface
+    setVendas(prevVendas => prevVendas.map(v => 
+      v.id === pedidoId ? { ...v, status_entrega: novoStatus } : v
+    ));
 
-  // Ajuste sutil de custos baseados na visão mensal ou anual cumulativa
-  const custosOperacionais = produtos.length > 0 
-    ? (abaAtiva === 'mensal' ? 3200.00 : 3200.00 * 12) 
-    : 0.00;
+    try {
+      const { error } = await supabase
+        .from('vendas')
+        .update({ status_entrega: novoStatus })
+        .eq('id', pedidoId);
+        
+      if (error) throw error;
+    } catch (error) {
+      console.error('Erro ao atualizar entrega:', error);
+      alert('Erro ao atualizar o status de entrega.');
+      // Se falhar, reverte localmente chamando a busca
+      buscarDados();
+    }
+  };
+
+  const valorTotalEstoqueVarejo = produtos.reduce((acc, curr) => acc + (parseFloat(curr.preco_varejo || 0) * parseInt(curr.quantidade_estoque || 0)), 0);
+  const produtosFiltrados = produtos.filter(prod => prod.nome.toLowerCase().includes(termoBusca.toLowerCase()));
+
+  const dadosAlocacao = [...produtos]
+    .map(p => ({ name: p.nome, value: parseFloat(p.preco_varejo) * parseInt(p.quantidade_estoque) }))
+    .filter(p => p.value > 0).sort((a, b) => b.value - a.value);
+  
+  const topAlocacao = dadosAlocacao.slice(0, 5);
+  const outrosAlocacao = dadosAlocacao.slice(5).reduce((acc, curr) => acc + curr.value, 0);
+  if (outrosAlocacao > 0) topAlocacao.push({ name: 'Outros Modelos', value: outrosAlocacao });
+
+  const CustomTooltipRosca = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-white border border-slate-200 p-3 rounded-xl shadow-lg text-sm">
+          <p className="font-bold text-slate-800 mb-1">{payload[0].name}</p>
+          <p className="text-slate-600 font-mono">R$ {payload[0].value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const CustomTooltipCaixa = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-white border border-slate-200 p-3 rounded-xl shadow-lg text-sm min-w-[150px]">
+          <p className="font-bold text-slate-800 mb-2 border-b border-slate-100 pb-1">{label} / {ano}</p>
+          {payload.map((entry, index) => (
+            <div key={index} className="flex justify-between gap-4 mb-1 text-xs">
+              <span style={{ color: entry.color }} className="font-semibold">{entry.name}:</span>
+              <span className="font-mono text-slate-700">R$ {entry.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
-    <div className="space-y-4 md:space-y-6 pb-16">
+    <div className="space-y-6 md:space-y-8 pb-16 animate-fade-in text-left">
       
-      {/* NAVEGAÇÃO DE ABAS TEMPORAIS + CONTROLES */}
-      <div className="flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-3 md:gap-4 bg-white border border-slate-100 p-2 md:p-3 rounded-2xl shadow-xs">
-        
-        {/* Chaves de Seleção da Aba (Mensal vs Anual) */}
-        <div className="flex bg-slate-100 p-1 rounded-xl w-full xl:w-auto">
-          <button
-            onClick={() => setAbaAtiva('mensal')}
-            className={`flex-1 text-xs md:text-sm font-bold px-3 py-2.5 rounded-lg transition-all cursor-pointer ${abaAtiva === 'mensal' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
-          >
-            📊 Visão Mensal
-          </button>
-          <button
-            onClick={() => setAbaAtiva('anual')}
-            className={`flex-1 text-xs md:text-sm font-bold px-3 py-2.5 rounded-lg transition-all cursor-pointer ${abaAtiva === 'anual' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
-          >
-            📅 Projeção Anual
-          </button>
-        </div>
-
-        {/* Seletores Dinâmicos de Filtro */}
-        <div className="flex items-center gap-2 md:gap-3 w-full xl:w-auto justify-between xl:justify-end">
-          {abaAtiva === 'mensal' && (
-            <select 
-              value={mes} 
-              onChange={(e) => setMes(e.target.value)}
-              className="flex-1 xl:flex-none bg-slate-50 border border-slate-200 rounded-xl px-2 md:px-3 py-2 md:py-2.5 text-xs md:text-sm font-semibold text-slate-700 focus:outline-none focus:border-lua-rose-dark cursor-pointer"
-            >
-              <option value="01">Janeiro</option>
-              <option value="02">Fevereiro</option>
-              <option value="03">Março</option>
-              <option value="04">Abril</option>
-              <option value="05">Maio</option>
-              <option value="06">Junho</option>
-              <option value="07">Julho</option>
-              <option value="08">Agosto</option>
-              <option value="09">Setembro</option>
-              <option value="10">Outubro</option>
-              <option value="11">Novembro</option>
-              <option value="12">Dezembro</option>
-            </select>
-          )}
-
-          <select 
-            value={ano} 
-            onChange={(e) => setAno(e.target.value)}
-            className="flex-1 xl:flex-none bg-slate-50 border border-slate-200 rounded-xl px-2 md:px-4 py-2 md:py-2.5 text-xs md:text-sm font-semibold text-slate-700 focus:outline-none focus:border-lua-rose-dark cursor-pointer"
-          >
-            <option value="2025">2025</option>
-            <option value="2026">2026</option>
-            <option value="2027">2027</option>
-          </select>
-        </div>
+      {/* NAVEGAÇÃO PRINCIPAL (DASHBOARD VS PEDIDOS) */}
+      <div className="flex bg-slate-200/50 p-1.5 rounded-xl md:w-max mx-auto shadow-inner border border-slate-200/60">
+        <button
+          onClick={() => setVisaoPrincipal('dashboard')}
+          className={`flex-1 md:flex-none px-6 py-2.5 rounded-lg text-sm font-bold transition-all duration-300 flex items-center justify-center gap-2 ${
+            visaoPrincipal === 'dashboard' 
+            ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50' 
+            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+          }`}
+        >
+          📈 Dashboard Financeiro
+        </button>
+        <button
+          onClick={() => setVisaoPrincipal('pedidos')}
+          className={`flex-1 md:flex-none px-6 py-2.5 rounded-lg text-sm font-bold transition-all duration-300 flex items-center justify-center gap-2 ${
+            visaoPrincipal === 'pedidos' 
+            ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50' 
+            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+          }`}
+        >
+          📦 Gestão de Pedidos
+        </button>
       </div>
 
-      {/* GRADE INDICADORA EXECUTIVA EXPANDIDA */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
-        <StatCard 
-          label={abaAtiva === 'mensal' ? "Capital Estocado (Varejo)" : "Patrimônio Total Anual"}
-          value={`R$ ${valorTotalEstoqueVarejo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
-          statusText="Valor total de prateleira" 
-          statusType="gold" 
-        />
-        <StatCard 
-          label="Avaliação em Atacado" 
-          value={`R$ ${valorTotalEstoqueAtacado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
-          statusText="Faturamento mínimo B2B" 
-          statusType="neutral" 
-        />
-        <StatCard 
-          label={abaAtiva === 'mensal' ? "Custos de Operação (Mês)" : "Custos Fixos Projetados"}
-          value={`R$ ${custosOperacionais.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
-          statusText="Orçamento fixo estrutural" 
-          statusType="alert" 
-        />
-        <StatCard 
-          label="Rentabilidade do Catálogo" 
-          value={`${margemMediaPotencial.toFixed(1)}%`} 
-          statusText="Markup médio Varejo/Atacado" 
-          statusType="gold" 
-        />
-      </div>
-
-      {/* SEÇÃO GRÁFICA AVANÇADA: DISTRIBUIÇÃO PATRIMONIAL */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
-        
-        {/* Gráfico de Barras de Distribuição */}
-        <div className="lg:col-span-2 bg-white border border-lua-rose-dark/10 rounded-2xl p-4 md:p-6 shadow-xs text-left">
-          <div className="flex flex-col sm:flex-row justify-between items-start mb-4 md:mb-6 gap-3">
-            <div>
-              <h3 className="font-serif text-base md:text-lg font-bold text-slate-800">Alocação de Ativos por Modelo</h3>
-              <p className="text-[11px] md:text-xs text-slate-400 mt-0.5">Peso financeiro e concentração de cada pijama.</p>
+      {/* ------------------------------------------------------------- */}
+      {/* VISÃO 1: DASHBOARD FINANCEIRO E ESTOQUE */}
+      {/* ------------------------------------------------------------- */}
+      {visaoPrincipal === 'dashboard' && (
+        <div className="space-y-6 md:space-y-8 animate-fade-in">
+          {/* CONTROLES DE DATA */}
+          <div className="flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-4 bg-white border border-slate-200/70 p-3 md:p-4 rounded-2xl shadow-sm">
+            <div className="flex bg-slate-100/80 p-1 rounded-xl w-full xl:w-auto border border-slate-200/50">
+              <button
+                onClick={() => setAbaAtiva('mensal')}
+                className={`flex-1 text-xs md:text-sm font-semibold px-4 py-2.5 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-2 ${abaAtiva === 'mensal' ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+              >
+                📊 Visão Mensal
+              </button>
+              <button
+                onClick={() => setAbaAtiva('anual')}
+                className={`flex-1 text-xs md:text-sm font-semibold px-4 py-2.5 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-2 ${abaAtiva === 'anual' ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+              >
+                📅 Projeção Anual
+              </button>
             </div>
-            <span className="text-[10px] bg-lua-cream text-lua-rose-dark font-bold px-2 py-1 rounded uppercase tracking-wider self-start sm:self-auto">
-              {abaAtiva}
-            </span>
-          </div>
-          
-          <div className="space-y-4 max-h-[320px] overflow-y-auto pr-1">
-            {carregando ? (
-              <div className="text-xs text-slate-400 text-center py-12 md:py-16">Estruturando dados analíticos...</div>
-            ) : produtos.length === 0 ? (
-              <div className="text-xs text-slate-400 text-center py-12 md:py-16">Nenhum dado financeiro para o ciclo.</div>
-            ) : (
-              produtos.map(prod => {
-                const valorProduto = prod.preco_varejo * prod.quantidade_estoque;
-                const porcentagem = valorTotalEstoqueVarejo > 0 ? (valorProduto / valorTotalEstoqueVarejo) * 100 : 0;
-                
-                return (
-                  <div key={prod.id} className="space-y-1.5">
-                    <div className="flex justify-between text-[11px] md:text-xs font-medium text-slate-700 gap-2">
-                      <span className="truncate flex-1 min-w-0">✨ {prod.nome}</span>
-                      <span className="font-mono text-slate-500 font-semibold shrink-0">
-                        R$ {valorProduto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} <span className="hidden sm:inline">({porcentagem.toFixed(1)}%)</span>
-                      </span>
-                    </div>
-                    <div className="w-full bg-slate-50 border border-slate-100 h-2.5 rounded-full overflow-hidden">
-                      <div 
-                        className="bg-lua-rose-dark h-full rounded-full transition-all duration-700 ease-out"
-                        style={{ width: `${porcentagem}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
 
-        {/* Card Lateral de Eficiência Física de Estoque */}
-        <div className="bg-white border border-lua-rose-dark/10 rounded-2xl p-4 md:p-6 shadow-xs text-left flex flex-col justify-between">
-          <div>
-            <h3 className="font-serif text-base md:text-lg font-bold text-slate-800 mb-1">Balanço Volumétrico</h3>
-            <p className="text-[11px] md:text-xs text-slate-400">Total físico de peças prontas na prateleira.</p>
-            
-            <div className="my-6 md:my-8 text-center">
-              <span className="text-4xl md:text-5xl font-mono font-bold text-slate-800 block">{carregando ? "..." : totalPecasEstoque}</span>
-              <span className="text-[9px] md:text-[10px] text-slate-400 uppercase tracking-widest font-bold block mt-1">Unidades Disponíveis</span>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-100 pt-4 space-y-3 text-[11px] md:text-xs">
-            <div className="flex justify-between items-center text-slate-500">
-              <span>Modelos Cadastrados:</span>
-              <strong className="text-slate-700 font-mono">{produtos.length} referências</strong>
-            </div>
-            <div className="flex justify-between items-center text-slate-500">
-              <span>Estoque Crítico (&le; 4 un):</span>
-              <strong className="text-rose-600 bg-rose-50 px-2 py-0.5 rounded font-mono border border-rose-100">
-                {produtos.filter(p => p.quantidade_estoque <= 4).length} itens
-              </strong>
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      {/* 3. MÓDULO SÍNCRONO DE GERENCIAMENTO DE CATÁLOGO */}
-      <div className="bg-white border border-lua-rose-dark/10 rounded-2xl p-4 md:p-6 shadow-xs">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-slate-100 pb-4 md:pb-5 mb-4 md:mb-6 gap-4">
-          <div className="text-left">
-            <h2 className="text-lg md:text-xl font-bold text-slate-800">Tabela Operacional de Ajuste</h2>
-            <p className="text-[11px] md:text-xs text-slate-400 mt-0.5">Entradas numéricas diretas para modificação em tempo real.</p>
-          </div>
-          <Button variant="gold" onClick={handleSalvarAlteracoes} disabled={salvando || carregando} className="w-full lg:w-auto cursor-pointer py-3 lg:py-2 text-sm">
-            {salvando ? 'Salvando Lote...' : '💾 Sincronizar Alterações'}
-          </Button>
-        </div>
-
-        <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0 pb-2">
-          <table className="w-full text-left text-sm text-slate-600 min-w-[650px] md:min-w-full">
-            <thead>
-              <tr className="bg-lua-cream border-b border-lua-rose-dark/10 text-slate-500 text-[10px] md:text-xs uppercase tracking-wider whitespace-nowrap">
-                <th className="p-3 md:p-4 rounded-l-lg">Pijama / Produto</th>
-                <th className="p-3 md:p-4">Varejo (R$)</th>
-                <th className="p-3 md:p-4">Atacado (R$)</th>
-                <th className="p-3 md:p-4">Qtd Estoque</th>
-                <th className="p-3 md:p-4 rounded-r-lg">Diagnóstico</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {carregando ? (
-                <tr>
-                  <td colSpan="5" className="p-8 md:p-12 text-center text-xs text-slate-400">
-                    Buscando portfólio de produtos...
-                  </td>
-                </tr>
-              ) : produtos.length === 0 ? (
-                <tr>
-                  <td colSpan="5" className="p-8 md:p-12 text-center text-xs text-slate-400">
-                    Nenhum produto indexado para a visão selecionada.
-                  </td>
-                </tr>
-              ) : (
-                produtos.map((prod) => (
-                  <tr key={prod.id} className="hover:bg-slate-50/40 transition-colors">
-                    <td className="p-3 md:p-4 font-serif font-bold text-slate-700 text-left text-xs md:text-sm max-w-[150px] truncate">
-                      {prod.nome}
-                    </td>
-                    
-                    {/* Preço Varejo */}
-                    <td className="p-3 md:p-4 whitespace-nowrap">
-                      <input 
-                        type="number" 
-                        step="0.01"
-                        value={prod.preco_varejo}
-                        onChange={(e) => handleInputChange(prod.id, 'preco_varejo', parseFloat(e.target.value) || 0)}
-                        className="w-20 md:w-24 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 md:py-1 text-[11px] md:text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-lua-rose-dark"
-                      />
-                    </td>
-
-                    {/* Preço Atacado */}
-                    <td className="p-3 md:p-4 whitespace-nowrap">
-                      <input 
-                        type="number" 
-                        step="0.01"
-                        value={prod.preco_atacado}
-                        onChange={(e) => handleInputChange(prod.id, 'preco_atacado', parseFloat(e.target.value) || 0)}
-                        className="w-20 md:w-24 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 md:py-1 text-[11px] md:text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-lua-rose-dark"
-                      />
-                    </td>
-                    
-                    {/* Quantidade Estoque */}
-                    <td className="p-3 md:p-4 whitespace-nowrap">
-                      <input 
-                        type="number" 
-                        value={prod.quantidade_estoque}
-                        onChange={(e) => handleInputChange(prod.id, 'quantidade_estoque', parseInt(e.target.value) || 0)}
-                        className="w-16 md:w-20 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 md:py-1 text-[11px] md:text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-lua-rose-dark text-center"
-                      />
-                    </td>
-
-                    {/* Diagnóstico Automatizado */}
-                    <td className="p-3 md:p-4 text-left whitespace-nowrap">
-                      {prod.quantidade_estoque <= 0 ? (
-                        <span className="bg-red-50 text-red-700 text-[9px] md:text-[10px] font-bold px-2 py-1 md:py-0.5 rounded border border-red-200">
-                          Esgotado
-                        </span>
-                      ) : prod.quantidade_estoque <= 4 ? (
-                        <span className="bg-amber-50 text-amber-700 text-[9px] md:text-[10px] font-bold px-2 py-1 md:py-0.5 rounded border border-amber-200">
-                          Estoque Mínimo
-                        </span>
-                      ) : (
-                        <span className="bg-emerald-50 text-emerald-700 text-[9px] md:text-[10px] font-bold px-2 py-1 md:py-0.5 rounded border border-emerald-200">
-                          Disponível
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))
+            <div className="flex items-center gap-2 md:gap-3 w-full xl:w-auto justify-between xl:justify-end">
+              {abaAtiva === 'mensal' && (
+                <select 
+                  value={mes} onChange={(e) => setMes(e.target.value)}
+                  className="flex-1 xl:flex-none bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs md:text-sm font-semibold text-slate-700 focus:outline-none focus:border-lua-rose-dark cursor-pointer"
+                >
+                  <option value="01">Janeiro</option><option value="02">Fevereiro</option><option value="03">Março</option>
+                  <option value="04">Abril</option><option value="05">Maio</option><option value="06">Junho</option>
+                  <option value="07">Julho</option><option value="08">Agosto</option><option value="09">Setembro</option>
+                  <option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
+                </select>
               )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              {/* ANO DINÂMICO (DASHBOARD) */}
+              <select 
+                value={ano} onChange={(e) => setAno(e.target.value)}
+                className="flex-1 xl:flex-none bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs md:text-sm font-semibold text-slate-700 focus:outline-none focus:border-lua-rose-dark cursor-pointer"
+              >
+                {Array.from({ length: 10 }, (_, i) => 2024 + i).map(anoGerado => (
+                  <option key={anoGerado} value={anoGerado}>
+                    {anoGerado}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
+          {/* INDICADORES */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+            <StatCard label="Receita Bruta (Paga)" value={`R$ ${receitaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} statusText={abaAtiva === 'mensal' ? 'Faturamento no mês' : 'Faturamento no ano'} statusType="gold" />
+            <StatCard label="Despesas Operacionais" value={`R$ ${custosOperacionais.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} statusText={abaAtiva === 'mensal' ? 'Saídas no mês' : 'Saídas no ano'} statusType="alert" />
+            <StatCard label="Resultado Líquido" value={`R$ ${(receitaTotal - custosOperacionais).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} statusText="Receitas - Despesas" statusType={(receitaTotal - custosOperacionais) >= 0 ? "neutral" : "alert"} />
+            <StatCard label="Capital Estocado" value={`R$ ${valorTotalEstoqueVarejo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} statusText="Patrimônio em prateleira" statusType="gold" />
+          </div>
+
+          {/* GRÁFICOS */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+            <div className="lg:col-span-2 bg-white border border-slate-200/70 rounded-2xl p-5 md:p-7 shadow-sm">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="font-serif text-base md:text-lg font-bold text-slate-800">Demonstrativo de Resultado</h3>
+                  <p className="text-xs md:text-sm text-slate-500">Histórico de Receitas vs Despesas projetado para {ano}.</p>
+                </div>
+              </div>
+              <div className="h-64 w-full mt-4">
+                {carregando ? (
+                  <div className="h-full flex items-center justify-center"><span className="text-slate-400 text-sm">Carregando fluxo...</span></div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={dadosFluxoCaixa} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="mes" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(val) => `R$ ${val/1000}k`} />
+                      <RechartsTooltip content={<CustomTooltipCaixa />} />
+                      <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px', color: '#64748b' }}/>
+                      <Bar dataKey="receitas" name="Receitas" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                      <Bar dataKey="despesas" name="Despesas" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                      <Line type="monotone" dataKey="saldo" name="Saldo Líquido" stroke="#0ea5e9" strokeWidth={3} dot={{ r: 4, fill: '#0ea5e9', strokeWidth: 2, stroke: '#fff' }} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200/70 rounded-2xl p-5 md:p-7 shadow-sm">
+              <div className="mb-4">
+                <h3 className="font-serif text-base md:text-lg font-bold text-slate-800">Alocação de Ativos</h3>
+                <p className="text-xs md:text-sm text-slate-500">Concentração de capital.</p>
+              </div>
+              <div className="h-56 w-full flex items-center justify-center relative">
+                {carregando ? (
+                  <span className="text-slate-400 text-sm">Carregando...</span>
+                ) : topAlocacao.length === 0 ? (
+                  <span className="text-slate-400 text-sm">Estoque vazio.</span>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={topAlocacao} innerRadius={65} outerRadius={90} paddingAngle={4} dataKey="value">
+                        {topAlocacao.map((entry, index) => <Cell key={`cell-${index}`} fill={CORES_GRAFICO[index % CORES_GRAFICO.length]} />)}
+                      </Pie>
+                      <RechartsTooltip content={<CustomTooltipRosca />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+                {!carregando && topAlocacao.length > 0 && (
+                  <div className="absolute flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Estoque</span>
+                    <span className="text-base font-mono font-bold text-slate-800">
+                      R$ {valorTotalEstoqueVarejo > 1000 ? `${(valorTotalEstoqueVarejo/1000).toFixed(1)}k` : valorTotalEstoqueVarejo.toFixed(0)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* TABELA DE ESTOQUE */}
+          <div className="bg-white border border-slate-200/70 rounded-2xl shadow-sm overflow-hidden mt-6">
+            <div className="p-5 md:p-7 border-b border-slate-100 bg-slate-50/50">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+                <div className="text-left flex-1">
+                  <h2 className="text-lg md:text-xl font-bold text-slate-800">Tabela Operacional de Ajuste</h2>
+                  <p className="text-xs md:text-sm text-slate-500 mt-1">Modificação ágil de preços e volumes.</p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                  <input 
+                    type="text" placeholder="🔍 Buscar produto..." value={termoBusca} onChange={(e) => setTermoBusca(e.target.value)}
+                    className="w-full sm:w-64 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:border-lua-rose-dark outline-none"
+                  />
+                  <Button variant="gold" onClick={handleSalvarAlteracoes} disabled={salvando || carregando} className="w-full sm:w-auto whitespace-nowrap py-2.5 px-6">
+                    {salvando ? 'Salvando...' : 'Sincronizar'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-slate-600 min-w-[700px]">
+                <thead>
+                  <tr className="bg-white border-b border-slate-200 text-slate-500 text-xs uppercase tracking-wider font-semibold">
+                    <th className="px-5 py-4">Produto</th>
+                    <th className="px-5 py-4">Varejo (R$)</th>
+                    <th className="px-5 py-4">Atacado (R$)</th>
+                    <th className="px-5 py-4 text-center">Volume</th>
+                    <th className="px-5 py-4">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {carregando ? (
+                    <tr><td colSpan="5" className="p-12 text-center text-sm text-slate-400">Buscando portfólio...</td></tr>
+                  ) : produtosFiltrados.length === 0 ? (
+                    <tr><td colSpan="5" className="p-12 text-center text-sm text-slate-400">Nenhum produto.</td></tr>
+                  ) : (
+                    produtosFiltrados.map((prod) => (
+                      <tr key={prod.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-5 py-4 font-serif font-bold text-slate-800 truncate max-w-[200px]">{prod.nome}</td>
+                        <td className="px-5 py-4"><input type="number" step="0.01" value={prod.preco_varejo} onChange={(e) => handleInputChange(prod.id, 'preco_varejo', parseFloat(e.target.value) || 0)} className="w-24 px-2 py-1.5 bg-slate-50 border border-transparent hover:border-slate-200 focus:bg-white rounded-lg font-mono outline-none"/></td>
+                        <td className="px-5 py-4"><input type="number" step="0.01" value={prod.preco_atacado} onChange={(e) => handleInputChange(prod.id, 'preco_atacado', parseFloat(e.target.value) || 0)} className="w-24 px-2 py-1.5 bg-slate-50 border border-transparent hover:border-slate-200 focus:bg-white rounded-lg font-mono outline-none"/></td>
+                        <td className="px-5 py-4 flex justify-center"><input type="number" value={prod.quantidade_estoque} onChange={(e) => handleInputChange(prod.id, 'quantidade_estoque', parseInt(e.target.value) || 0)} className="w-16 text-center py-1.5 bg-slate-50 border border-transparent hover:border-slate-200 focus:bg-white rounded-lg font-mono outline-none"/></td>
+                        <td className="px-5 py-4">
+                          {prod.quantidade_estoque <= 0 ? <span className="bg-rose-50 text-rose-700 px-2 py-1 rounded text-xs font-bold">Esgotado</span> : prod.quantidade_estoque <= 4 ? <span className="bg-amber-50 text-amber-700 px-2 py-1 rounded text-xs font-bold">Crítico</span> : <span className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded text-xs font-bold">Saudável</span>}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* VISÃO 2: GESTÃO DE PEDIDOS */}
+      {/* ------------------------------------------------------------- */}
+      {visaoPrincipal === 'pedidos' && (
+        <div className="bg-white border border-slate-200/70 rounded-2xl shadow-sm overflow-hidden animate-fade-in">
+          <div className="p-5 md:p-7 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="text-left">
+              <h2 className="text-lg md:text-xl font-bold text-slate-800">Controle Logístico e Pedidos</h2>
+              <p className="text-xs md:text-sm text-slate-500 mt-1">
+                Acompanhe o pagamento e atualize o status de entrega dos clientes.
+              </p>
+            </div>
+            <div className="flex gap-2">
+               <select 
+                  value={mes} onChange={(e) => setMes(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none cursor-pointer"
+                >
+                  <option value="01">Janeiro</option><option value="02">Fevereiro</option><option value="03">Março</option>
+                  <option value="04">Abril</option><option value="05">Maio</option><option value="06">Junho</option>
+                  <option value="07">Julho</option><option value="08">Agosto</option><option value="09">Setembro</option>
+                  <option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
+                </select>
+                {/* ANO DINÂMICO (PEDIDOS) */}
+                <select 
+                  value={ano} onChange={(e) => setAno(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none cursor-pointer"
+                >
+                  {Array.from({ length: 10 }, (_, i) => 2024 + i).map(anoGerado => (
+                    <option key={anoGerado} value={anoGerado}>
+                      {anoGerado}
+                    </option>
+                  ))}
+                </select>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-slate-600 min-w-[900px]">
+              <thead>
+                <tr className="bg-white border-b border-slate-200 text-slate-500 text-[11px] md:text-xs uppercase tracking-wider font-semibold">
+                  <th className="px-5 py-4 w-24">Pedido</th>
+                  <th className="px-5 py-4 w-48">Cliente</th>
+                  <th className="px-5 py-4 min-w-[200px]">Itens Comprados</th>
+                  <th className="px-5 py-4">Valor / Data</th>
+                  <th className="px-5 py-4 text-center">Pagamento</th>
+                  <th className="px-5 py-4 text-center">Ação de Entrega</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {carregando ? (
+                  <tr><td colSpan="6" className="p-12 text-center text-sm text-slate-400">Carregando operações...</td></tr>
+                ) : vendas.length === 0 ? (
+                  <tr><td colSpan="6" className="p-12 text-center text-sm text-slate-400">Nenhum pedido no período.</td></tr>
+                ) : (
+                  vendas.map((venda) => (
+                    <tr key={venda.id} className="hover:bg-slate-50/80 transition-colors">
+                      {/* ID */}
+                      <td className="px-5 py-4 font-mono text-slate-800 text-sm font-semibold">
+                        #{venda.id}
+                      </td>
+                      
+                      {/* CLIENTE */}
+                      <td className="px-5 py-4">
+                        <div className="font-bold text-slate-800 truncate w-40" title={venda.cliente_nome}>{venda.cliente_nome || 'Não informado'}</div>
+                        <div className="text-xs text-slate-500 font-mono mt-0.5">{venda.cliente_telefone || '-'}</div>
+                      </td>
+
+                      {/* ITENS COMPRADOS (Resumo) */}
+                      <td className="px-5 py-4">
+                        <div className="text-xs text-slate-600 space-y-1">
+                          {Array.isArray(venda.itens) && venda.itens.length > 0 ? (
+                            venda.itens.map((item, idx) => (
+                              <div key={idx} className="flex gap-2 items-center">
+                                <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-500">{item.quantidade}x</span>
+                                <span className="truncate w-40 inline-block" title={item.nome}>{item.nome}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <span className="text-slate-400 italic">Detalhes indisponíveis</span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* VALOR E DATA */}
+                      <td className="px-5 py-4">
+                        <div className="font-mono font-bold text-slate-800 text-sm">
+                          R$ {parseFloat(venda.total).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </div>
+                        <div className="text-[11px] text-slate-400 mt-1">
+                          {new Date(venda.criado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </td>
+
+                      {/* PAGAMENTO */}
+                      <td className="px-5 py-4 text-center whitespace-nowrap">
+                        {venda.status_pagamento?.toLowerCase() === 'pago' ? (
+                          <span className="bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-md border border-emerald-200 inline-flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Pago
+                          </span>
+                        ) : (
+                          <span className="bg-amber-50 text-amber-700 text-xs font-bold px-3 py-1.5 rounded-md border border-amber-200 inline-flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span> Pendente
+                          </span>
+                        )}
+                      </td>
+
+                      {/* AÇÃO DE ENTREGA (BOTÃO) */}
+                      <td className="px-5 py-4 text-center">
+                        <button
+                          onClick={() => handleAlternarEntrega(venda.id, venda.status_entrega)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                            venda.status_entrega === 'entregue'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-slate-50 hover:text-slate-500 hover:border-slate-300'
+                            : 'bg-white text-slate-500 border-slate-300 shadow-sm hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200'
+                          }`}
+                          title={venda.status_entrega === 'entregue' ? "Clique para reverter para pendente" : "Marcar como entregue"}
+                        >
+                          {venda.status_entrega === 'entregue' ? '✅ Entregue' : 'Marcar Entrega'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Button from '../components/Button';
 
-export default function MainLayout({ children, currentView, setView, userRole, setUserRole, carrinhoContagem }) {
+export default function MainLayout({ children, currentView, setView, userRole, setUserRole, carrinhoContagem, isLoggedIn }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   
@@ -130,10 +130,21 @@ export default function MainLayout({ children, currentView, setView, userRole, s
                       <span className="text-base">👔</span> 
                       <span className={`animate-fade-in ${!isSidebarOpen && 'md:hidden'}`}>Gestão de Equipe</span>
                     </button>
+
+                    {/* ✨ NOVA TELA DE DESPESAS INSERIDA AQUI */}
+                    <button onClick={() => setView('despesas')} className={`w-full flex items-center rounded-xl text-sm font-medium transition-all duration-200 ${currentView === 'despesas' ? 'bg-lua-rose-dark text-white font-semibold' : 'hover:bg-slate-800 hover:text-white'} ${isSidebarOpen ? 'px-3 py-2.5 gap-3' : 'md:p-3 md:justify-center px-3 py-2.5 gap-3'}`}>
+                      <span className="text-base">💸</span> 
+                      <span className={`animate-fade-in ${!isSidebarOpen && 'md:hidden'}`}>Gestão de Despesas</span>
+                    </button>
                     
                     <button onClick={() => setView('sistema')} className={`w-full flex items-center rounded-xl text-sm font-medium transition-all duration-200 ${currentView === 'sistema' ? 'bg-lua-rose-dark text-white font-semibold' : 'hover:bg-slate-800 hover:text-white'} ${isSidebarOpen ? 'px-3 py-2.5 gap-3' : 'md:p-3 md:justify-center px-3 py-2.5 gap-3'}`}>
                       <span className="text-base">📊</span> 
                       <span className={`animate-fade-in ${!isSidebarOpen && 'md:hidden'}`}>Painel Geral (ERP)</span>
+                    </button>
+
+                    <button onClick={() => setView('pagamentos')} className={`w-full flex items-center rounded-xl text-sm font-medium transition-all duration-200 ${currentView === 'pagamentos' ? 'bg-lua-rose-dark text-white font-semibold' : 'hover:bg-slate-800 hover:text-white'} ${isSidebarOpen ? 'px-3 py-2.5 gap-3' : 'md:p-3 md:justify-center px-3 py-2.5 gap-3'}`}>
+                      <span className="text-base">💳</span> 
+                      <span className={`animate-fade-in ${!isSidebarOpen && 'md:hidden'}`}>InfinitePay</span>
                     </button>
                   </>
                 )}
@@ -181,27 +192,42 @@ export default function MainLayout({ children, currentView, setView, userRole, s
                   Loja Online
                 </button>
                 
-                {/* NOVO BOTÃO DE MEUS PEDIDOS ADICIONADO AQUI */}
-                <button onClick={() => setView('pedidos')} className={`px-4 py-2 rounded-xl transition-all duration-200 ${currentView === 'pedidos' ? 'bg-lua-rose-light/40 text-lua-rose-dark font-semibold' : 'hover:bg-slate-50 hover:text-slate-900'}`}>
-                  Meus Pedidos
-                </button>
+                {/* O botão 'Meus Pedidos' só aparece na navbar principal se o usuário estiver logado */}
+                {isLoggedIn && (
+                  <button onClick={() => setView('pedidos')} className={`px-4 py-2 rounded-xl transition-all duration-200 ${currentView === 'pedidos' ? 'bg-lua-rose-light/40 text-lua-rose-dark font-semibold' : 'hover:bg-slate-50 hover:text-slate-900'}`}>
+                    Meus Pedidos
+                  </button>
+                )}
               </nav>
 
               <div className="flex items-center gap-2 md:gap-4">
                 
-                {/* 🌟 NOVO BOTÃO DE PEDIDOS (Aparece no celular e no PC) */}
-                <button 
-                  onClick={() => setView('pedidos')}
-                  className={`text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors px-2 md:px-3 py-1.5 md:py-2 rounded-xl hover:bg-slate-50 ${currentView === 'pedidos' ? 'text-lua-rose-dark bg-slate-50' : 'text-slate-500 hover:text-slate-900'}`}
-                >
-                  <span className="hidden md:inline">Meus </span>Pedidos
-                </button>
+                {/* 🌟 BOTÃO DE PEDIDOS (Aparece no celular e no PC, apenas se logado) */}
+                {isLoggedIn && (
+                  <button 
+                    onClick={() => setView('pedidos')}
+                    className={`md:hidden text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors px-2 py-1.5 rounded-xl hover:bg-slate-50 ${currentView === 'pedidos' ? 'text-lua-rose-dark bg-slate-50' : 'text-slate-500 hover:text-slate-900'}`}
+                  >
+                    Pedidos
+                  </button>
+                )}
 
+                {/* BOTÃO INTELIGENTE: Minha Conta (se deslogado) / Sair (se logado) */}
                 <button 
-                  onClick={() => setView('login')}
+                  onClick={() => {
+                    if (isLoggedIn) {
+                      handleLogout();
+                    } else {
+                      setView('login');
+                    }
+                  }}
                   className={`text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors px-2 md:px-3 py-1.5 md:py-2 rounded-xl hover:bg-slate-50 ${currentView === 'login' ? 'text-lua-rose-dark bg-slate-50' : 'text-slate-500 hover:text-slate-900'}`}
                 >
-                  <span className="hidden md:inline">Minha </span>Conta
+                  {isLoggedIn ? (
+                     <span className="text-rose-500">Sair</span>
+                  ) : (
+                     <><span className="hidden md:inline">Minha </span>Conta</>
+                  )}
                 </button>
 
                 <Button 

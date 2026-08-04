@@ -179,7 +179,7 @@ export default function VendasFisicas({ userRole }) {
         if (updateError) throw updateError;
       }
 
-      // Passo B: Persistir cabeçalho
+      // Passo B: Persistir cabeçalho (CORRIGIDO)
       const { error: insertError } = await supabase
         .from('vendas')
         .insert([{
@@ -188,6 +188,8 @@ export default function VendasFisicas({ userRole }) {
           cliente_cpf: clienteSelecionado.cpf || null,
           total: totalACobrar,
           tipo_venda: 'pdv',
+          forma_pagamento: formaPagamento, // Forma de pagamento incluída
+          status_pagamento: 'pago',        // Status da venda PDV como pago
           desconto: parseFloat(desconto || 0),
           parcelas: formaPagamento === 'credito' ? parseInt(parcelas) : 1,
           itens: carrinho
@@ -480,7 +482,7 @@ export default function VendasFisicas({ userRole }) {
         </div>
       </div>
 
-      {/* HISTÓRICO ATUALIZADO */}
+      {/* HISTÓRICO ATUALIZADO (COM HORA DA VENDA) */}
       {!carregando && vendasRealizadas.length > 0 && (
         <div className="bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs">
           <h3 className="font-serif text-base md:text-lg font-bold text-slate-800 mb-3 md:mb-4">Últimas Vendas (Hoje)</h3>
@@ -498,7 +500,14 @@ export default function VendasFisicas({ userRole }) {
               <tbody className="divide-y divide-slate-100">
                 {vendasRealizadas.map(venda => (
                   <tr key={venda.id} className="hover:bg-slate-50/20">
-                    <td className="p-3 text-xs md:text-sm font-bold text-slate-800 whitespace-nowrap">#VD-{venda.id}</td>
+                    <td className="p-3 text-xs md:text-sm font-bold text-slate-800 whitespace-nowrap">
+                      #VD-{venda.id}
+                      {venda.criado_em && (
+                        <div className="text-[10px] font-normal text-slate-400 mt-0.5">
+                          {new Date(venda.criado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute:'2-digit' })}
+                        </div>
+                      )}
+                    </td>
                     <td className="p-3">
                       <div className="font-medium text-slate-700 text-xs md:text-sm truncate max-w-[150px] md:max-w-xs">{venda.cliente_nome}</div>
                       <div className="text-[10px] md:text-xs text-slate-400 font-mono">{venda.cliente_cpf || 'Sem CPF'}</div>

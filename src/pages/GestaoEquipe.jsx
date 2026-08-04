@@ -55,10 +55,18 @@ export default function GestaoEquipe() {
     try {
       if (editandoId) {
         // --- FLUXO DE EDIÇÃO ---
+        
+        // Monta o objeto de atualização (não atualiza o email por segurança)
+        const updates = { nome, role };
+        // Só atualiza a senha se o administrador digitou uma nova
+        if (senha && senha.length >= 6) {
+          updates.senha = senha;
+        }
+
         // 1. Atualiza os dados na tabela visível pública (perfis)
         const { error: dbError } = await supabase
           .from('perfis')
-          .update({ nome, email, role, senha })
+          .update(updates)
           .eq('id', editandoId);
 
         if (dbError) throw dbError;
@@ -66,9 +74,14 @@ export default function GestaoEquipe() {
         // 2. Se o usuário estiver editando a PRÓPRIA conta, atualiza o login (Auth)
         const { data: { user } } = await supabase.auth.getUser();
         if (user?.id === editandoId) {
-          const { error: authError } = await supabase.auth.updateUser({ email, password: senha });
-          if (authError) {
-            console.warn('Aviso ao atualizar Auth:', authError.message);
+          const authUpdates = {};
+          if (senha && senha.length >= 6) authUpdates.password = senha;
+          
+          if (Object.keys(authUpdates).length > 0) {
+            const { error: authError } = await supabase.auth.updateUser(authUpdates);
+            if (authError) {
+              console.warn('Aviso ao atualizar Auth:', authError.message);
+            }
           }
         }
 
@@ -147,7 +160,7 @@ export default function GestaoEquipe() {
     setEditandoId(membro.id);
     setNome(membro.nome);
     setEmail(membro.email);
-    setSenha(membro.senha || '');
+    setSenha(''); // Sempre inicia vazio por segurança. Só preenche se quiser trocar.
     setRole(membro.role);
   };
 
@@ -186,7 +199,7 @@ export default function GestaoEquipe() {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 text-left">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 text-left pb-16">
       
       {/* Cadastro / Edição de Colaborador */}
       <div className="bg-white border border-lua-rose-dark/10 p-6 rounded-2xl shadow-xs h-fit">
@@ -204,6 +217,8 @@ export default function GestaoEquipe() {
               required 
             />
           </div>
+          
+          {/* E-MAIL BLOQUEADO DURANTE A EDIÇÃO */}
           <div>
             <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">E-mail de Login</label>
             <input 
@@ -211,16 +226,26 @@ export default function GestaoEquipe() {
               placeholder="vendedor@luadepijama.com" 
               value={email} 
               onChange={(e) => setEmail(e.target.value)} 
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark" 
+              disabled={!!editandoId} // Trava o campo se estiver editando
+              className={`w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-lua-rose-dark ${
+                !!editandoId 
+                  ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' 
+                  : 'bg-slate-50 text-slate-800 border-slate-200'
+              }`}
               required
             />
+            {!!editandoId && (
+              <span className="text-[10px] text-slate-400 mt-1 block">
+                O e-mail não pode ser alterado após o cadastro por segurança.
+              </span>
+            )}
           </div>
 
           <div>
             <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Senha de Acesso</label>
             <input 
               type="text" 
-              placeholder={editandoId ? "Nova senha se desejar alterar" : "Defina a senha de login"} 
+              placeholder={editandoId ? "Deixe em branco para manter a atual" : "Defina a senha de login"} 
               value={senha} 
               onChange={(e) => setSenha(e.target.value)} 
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark font-mono" 
@@ -249,7 +274,7 @@ export default function GestaoEquipe() {
               <button 
                 type="button" 
                 onClick={limparFormulario}
-                className="w-full text-xs text-slate-400 hover:text-slate-600 transition-colors py-1"
+                className="w-full text-xs text-slate-400 hover:text-slate-600 transition-colors py-1 cursor-pointer"
               >
                 Cancelar Edição
               </button>
@@ -264,23 +289,23 @@ export default function GestaoEquipe() {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-slate-600">
             <thead>
+              {/* COLUNA DE SENHAS REMOVIDA DAQUI */}
               <tr className="bg-lua-cream border-b border-lua-rose-dark/10 text-slate-500 text-xs uppercase">
-                <th className="p-3">Nome / E-mail</th>
+                <th className="p-3 rounded-l-lg">Nome / E-mail</th>
                 <th className="p-3 text-center">Nível de Acesso</th>
-                <th className="p-3 text-center">Senha Visual</th>
-                <th className="p-3 text-right">Ações</th>
+                <th className="p-3 text-right rounded-r-lg">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {carregando ? (
                 <tr>
-                  <td colSpan="4" className="p-8 text-center text-sm text-slate-400">
+                  <td colSpan="3" className="p-8 text-center text-sm text-slate-400">
                     Buscando membros da equipe...
                   </td>
                 </tr>
               ) : vendedores.length === 0 ? (
                 <tr>
-                  <td colSpan="4" className="p-8 text-center text-sm text-slate-400">
+                  <td colSpan="3" className="p-8 text-center text-sm text-slate-400">
                     Nenhum colaborador registrado.
                   </td>
                 </tr>
@@ -300,19 +325,19 @@ export default function GestaoEquipe() {
                         {v.role === 'admin' ? '🛡️ Gestor' : '👤 Vendedor'}
                       </span>
                     </td>
-                    <td className="p-3 text-center text-xs font-mono text-slate-400">
-                      {v.senha || '—'}
-                    </td>
-                    <td className="p-3 text-right space-x-2 whitespace-nowrap">
+                    
+                    {/* DADO DE SENHA REMOVIDO DAQUI */}
+                    
+                    <td className="p-3 text-right space-x-3 whitespace-nowrap">
                       <button 
                         onClick={() => iniciarEdicao(v)}
-                        className="text-xs text-blue-600 hover:underline font-medium"
+                        className="text-xs text-blue-600 hover:text-blue-800 font-bold transition-colors cursor-pointer"
                       >
                         Editar
                       </button>
                       <button 
                         onClick={() => handleExcluirColaborador(v.id, v.nome)}
-                        className="text-xs text-rose-600 hover:underline font-medium"
+                        className="text-xs text-rose-500 hover:text-rose-700 font-bold transition-colors cursor-pointer"
                       >
                         Excluir
                       </button>

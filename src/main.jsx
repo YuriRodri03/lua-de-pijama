@@ -9,22 +9,28 @@ import VendasFisicas from './pages/VendasFisicas'
 import Estoque from './pages/Estoque'
 import Clientes from './pages/Clientes'
 import GestaoEquipe from './pages/GestaoEquipe'
+import GestaoDespesas from './pages/GestaoDespesas'
+import GestaoPagamentos from './pages/GestaoPagamentos';
 import Login from './pages/Login'
 import Sacola from './pages/Sacola'
-import MeusPedidos from './pages/MeusPedidos' // <-- 1. IMPORT NOVO AQUI
+import MeusPedidos from './pages/MeusPedidos'
 import { supabase } from './services/supabase'
 
 function RootRouter() {
   const [view, setView] = useState('loja'); 
   const [role, setRole] = useState('cliente'); 
   const [carrinho, setCarrinho] = useState([]); 
+  
+  // NOVO ESTADO: Guarda se o usuário está logado de fato
+  const [isLoggedIn, setIsLoggedIn] = useState(false); 
 
-  // ESCUTA ATIVA: Sincroniza o papel (role)
+  // ESCUTA ATIVA: Sincroniza o papel (role) e o login
   useEffect(() => {
     async function verificarSessao() {
       const { data: { session } } = await supabase.auth.getSession();
       
       if (session?.user) {
+        setIsLoggedIn(true); // Marca como logado
         const { data: perfil } = await supabase
           .from('perfis')
           .select('role')
@@ -34,6 +40,8 @@ function RootRouter() {
         if (perfil?.role) {
           setRole(perfil.role);
         }
+      } else {
+        setIsLoggedIn(false); // Não tem sessão ativa
       }
     }
     
@@ -41,9 +49,11 @@ function RootRouter() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session) {
+        setIsLoggedIn(false);
         setRole('cliente');
         setView('loja');
       } else {
+        setIsLoggedIn(true);
         verificarSessao();
       }
     });
@@ -51,12 +61,26 @@ function RootRouter() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // ADICIONAR ITEM À SACOLA
+  // ADICIONAR ITEM À SACOLA (COM TRAVA DE ESTOQUE)
   const handleAdicionarAoCarrinho = (produto) => {
+    // 1. Bloqueia logo de cara se o produto estiver com estoque zerado ou negativo
+    if (!produto.quantidade_estoque || produto.quantidade_estoque <= 0) {
+      alert(`Poxa! O produto "${produto.nome}" esgotou! 😔`);
+      return;
+    }
+
+    // 2. Verifica se a quantidade que já está no carrinho atingiu o limite do estoque
+    const itemExistente = carrinho.find((item) => item.id === produto.id);
+    if (itemExistente && itemExistente.quantidade >= produto.quantidade_estoque) {
+      alert(`Desculpe, você já adicionou todas as unidades de "${produto.nome}" que temos no momento!`);
+      return;
+    }
+
+    // 3. Se passou pelas travas, pode adicionar ou somar na sacola
     setCarrinho((itensAnteriores) => {
-      const itemExistente = itensAnteriores.find((item) => item.id === produto.id);
+      const itemJaNaLista = itensAnteriores.find((item) => item.id === produto.id);
       
-      if (itemExistente) {
+      if (itemJaNaLista) {
         return itensAnteriores.map((item) =>
           item.id === produto.id ? { ...item, quantidade: item.quantidade + 1 } : item
         );
@@ -69,10 +93,12 @@ function RootRouter() {
           nome: produto.nome,
           preco_varejo: parseFloat(produto.preco_varejo),
           foto_url: produto.foto_url,
+          quantidade_estoque: produto.quantidade_estoque, // Guardamos o estoque máximo aqui também
           quantidade: 1,
         },
       ];
     });
+    
     alert(`${produto.nome} foi adicionado à sua sacola!`);
   };
 
@@ -92,6 +118,7 @@ function RootRouter() {
       userRole={role} 
       setUserRole={setRole}
       carrinhoContagem={totalItensSacola}
+      isLoggedIn={isLoggedIn} // <- PASSANDO A INFORMAÇÃO PARA O LAYOUT
     >
       {view === 'login' && (
         <Login 
@@ -108,7 +135,6 @@ function RootRouter() {
         />
       )}
 
-      {/* OLHA COMO FICOU LIMPO! */}
       {view === 'sacola' && (
         <Sacola 
           carrinho={carrinho}
@@ -119,7 +145,6 @@ function RootRouter() {
         />
       )}
       
-      {/* 2. ROTA DOS MEUS PEDIDOS ADICIONADA AQUI */}
       {view === 'pedidos' && <MeusPedidos setView={setView} />}
 
       {view === 'sistema' && <PainelSistema userRole={role} />}
@@ -127,6 +152,9 @@ function RootRouter() {
       {view === 'estoque' && <Estoque userRole={role} />}
       {view === 'clientes' && <Clientes userRole={role} />}
       {view === 'equipe' && <GestaoEquipe userRole={role} />}
+      {view === 'despesas' && <GestaoDespesas userRole={role} />}
+      {view === 'pagamentos' && <GestaoPagamentos />}
+      
     </MainLayout>
   );
 }
