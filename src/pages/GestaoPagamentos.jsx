@@ -101,7 +101,7 @@ export default function GestaoPagamentos() {
             <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 block mb-1.5">Sua InfiniteTag (Sem o $)</label>
             <input 
               type="text"
-              placeholder="Ex: yuri-rodrigues07"
+              placeholder=""
               value={config.infinitepay_merchant_id || ''}
               onChange={(e) => handleChange('infinitepay_merchant_id', e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-lua-rose-dark/20 focus:border-lua-rose-dark transition-all"
