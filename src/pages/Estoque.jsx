@@ -6,6 +6,7 @@ import { supabase } from '../services/supabase';
 export default function Estoque() {
   const [itens, setItens] = useState([]);
   const [carregando, setCarregando] = useState(true);
+  const [salvando, setSalvando] = useState(false);
   
   // Estados para o formulário de cadastro de novo produto
   const [nome, setNome] = useState('');
@@ -13,7 +14,7 @@ export default function Estoque() {
   const [tamanho, setTamanho] = useState('M');
   const [precoVarejo, setPrecoVarejo] = useState('');
   const [precoAtacado, setPrecoAtacado] = useState('');
-  const [fotoUrl, setFotoUrl] = useState('');
+  const [fotoArquivo, setFotoArquivo] = useState(null);
   const [tag, setTag] = useState('Novidade');
   const [qtd, setQtd] = useState('');
 
@@ -50,22 +51,46 @@ export default function Estoque() {
     buscarEstoque();
   }, []);
 
-  // 2. FUNÇÃO PARA SALVAR NO BANCO DE DADOS (INSERT)
+  // 2. FUNÇÃO PARA SALVAR NO BANCO DE DADOS (INSERT) E NO STORAGE
   const handleCadastrar = async (e) => {
     e.preventDefault();
+    setSalvando(true);
     
-    const novoProduto = {
-      nome,
-      cor,
-      tamanho,
-      preco_varejo: parseFloat(precoVarejo) || 0,
-      preco_atacado: parseFloat(precoAtacado) || 0,
-      foto_url: fotoUrl || null,
-      tag,
-      quantidade_estoque: parseInt(qtd) || 0
-    };
+    let urlImagemFinal = null;
 
     try {
+      // Faz o upload da imagem para o bucket do Supabase Storage
+      if (fotoArquivo) {
+        const extensao = fotoArquivo.name.split('.').pop();
+        const nomeArquivo = `${Date.now()}.${extensao}`;
+        const caminhoArquivo = `produtos/${nomeArquivo}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('produtos') // Certifique-se de que o bucket se chama "produtos"
+          .upload(caminhoArquivo, fotoArquivo);
+
+        if (uploadError) throw uploadError;
+
+        // Pega a URL pública gerada
+        const { data: linkData } = supabase.storage
+          .from('produtos')
+          .getPublicUrl(caminhoArquivo);
+
+        urlImagemFinal = linkData.publicUrl;
+      }
+
+      // Salva os dados no banco de dados
+      const novoProduto = {
+        nome,
+        cor,
+        tamanho,
+        preco_varejo: parseFloat(precoVarejo) || 0,
+        preco_atacado: parseFloat(precoAtacado) || 0,
+        foto_url: urlImagemFinal,
+        tag,
+        quantidade_estoque: parseInt(qtd) || 0
+      };
+
       const { data, error } = await supabase
         .from('produtos')
         .insert([novoProduto])
@@ -81,35 +106,59 @@ export default function Estoque() {
         setCor('');
         setPrecoVarejo('');
         setPrecoAtacado('');
-        setFotoUrl('');
         setTag('Novidade');
         setQtd('');
+        setFotoArquivo(null);
+        document.getElementById('input-foto').value = '';
+        
         alert('Produto registrado no estoque com sucesso!');
       }
     } catch (error) {
       console.error('Erro ao cadastrar produto:', error.message);
-      alert('Erro ao salvar o produto no banco de dados.');
+      alert('Erro ao salvar o produto no banco de dados. Verifique as configurações do Storage.');
+    } finally {
+      setSalvando(false);
     }
   };
 
-  // 3. FUNÇÃO PARA DELETAR NO BANCO DE DADOS (DELETE)
+  // 3. FUNÇÃO PARA DELETAR NO BANCO DE DADOS E NO STORAGE
   const handleDeletar = async (id) => {
     if (confirm("Tem certeza que deseja remover este produto do estoque?")) {
       try {
+        // Acha o produto que vai ser deletado na lista atual
+        const produto = itens.find(item => item.id === id);
+
+        // Se ele tiver uma foto, deletamos do Storage primeiro
+        if (produto && produto.foto_url) {
+          // Limpa a URL para pegar apenas o caminho do arquivo dentro do bucket
+          const urlSemFiltro = produto.foto_url.split('?')[0]; 
+          const caminhoDoArquivo = urlSemFiltro.split('/public/produtos/')[1];
+          
+          if (caminhoDoArquivo) {
+            const { error: erroStorage } = await supabase.storage
+              .from('produtos')
+              .remove([caminhoDoArquivo]);
+              
+            if (erroStorage) console.error("Erro ao deletar imagem:", erroStorage);
+          }
+        }
+
+        // Agora sim, deleta o produto do banco de dados
         const { error } = await supabase
           .from('produtos')
           .delete()
           .eq('id', id);
 
         if (error) throw error;
+        
+        // Remove da tela
         setItens(itens.filter(item => item.id !== id));
       } catch (error) {
         console.error('Erro ao deletar produto:', error.message);
-        alert('Não foi possível remover o produto do banco de dados.');
+        alert('Não foi possível remover o produto do estoque.');
       }
     }
   };
-
   // -------------------------------------------------------------------
   // 4. FUNÇÕES PARA EDITAR (UPDATE)
   // -------------------------------------------------------------------
@@ -235,12 +284,18 @@ export default function Estoque() {
             </div>
 
             <div>
-              <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">URL da Imagem</label>
-              <input type="url" placeholder="https://link.com/foto.jpg" value={fotoUrl} onChange={(e) => setFotoUrl(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark" />
+              <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Foto do Produto</label>
+              <input 
+                id="input-foto"
+                type="file" 
+                accept="image/*"
+                onChange={(e) => setFotoArquivo(e.target.files[0])} 
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-lua-rose-light/50 file:text-lua-rose-dark hover:file:bg-lua-rose-light" 
+              />
             </div>
 
-            <Button variant="primary" type="submit" className="w-full mt-2 py-3">
-              Salvar no Estoque
+            <Button variant="primary" type="submit" disabled={salvando} className="w-full mt-2 py-3 disabled:opacity-70">
+              {salvando ? 'Salvando imagem e produto...' : 'Salvar no Estoque'}
             </Button>
           </form>
         </div>

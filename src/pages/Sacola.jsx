@@ -184,7 +184,7 @@ export default function Sacola({
               <div key={item.id} className="flex items-center justify-between py-4 gap-3 md:gap-4">
                 <div className="flex items-center gap-3 md:gap-4 flex-1 min-w-0">
                   {item.foto_url ? (
-                    <img src={item.foto_url} alt={item.nome} className="w-14 h-14 md:w-16 md:h-16 object-cover rounded-xl bg-lua-cream shrink-0" />
+                    <img src={`${item.foto_url}?t=${Date.now()}`} alt={item.nome} className="w-14 h-14 md:w-16 md:h-16 object-cover rounded-xl bg-lua-cream shrink-0" />
                   ) : (
                     <div className="w-14 h-14 md:w-16 md:h-16 bg-lua-cream rounded-xl flex items-center justify-center text-xl select-none shrink-0">✨</div>
                   )}

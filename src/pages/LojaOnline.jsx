@@ -41,14 +41,16 @@ export default function LojaOnline({ userRole, onAdicionarProduto }) {
       const extensao = file.name.split('.').pop();
       const nomeArquivo = `${produtoId}-${Date.now()}.${extensao}`;
 
+      // ATUALIZADO: Nome do bucket alterado para 'produtos'
       const { error: uploadError } = await supabase.storage
-        .from('produtos-fotos')
+        .from('produtos')
         .upload(nomeArquivo, file, { cacheControl: '0', upsert: true });
 
       if (uploadError) throw uploadError;
 
+      // ATUALIZADO: Nome do bucket alterado para 'produtos'
       const { data: { publicUrl } } = supabase.storage
-        .from('produtos-fotos')
+        .from('produtos')
         .getPublicUrl(nomeArquivo);
 
       const { error: updateError } = await supabase
