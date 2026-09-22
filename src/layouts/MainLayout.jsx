@@ -5,25 +5,28 @@ export default function MainLayout({ children, currentView, setView, userRole, s
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   
-  // Estado local espelhado para forçar a renderização imediata quando o role mudar
+  // Define quem entra no painel interno (admin ou vendedor)
   const [isInternalUser, setIsInternalUser] = useState(userRole === 'admin' || userRole === 'vendedor');
 
-  // Efeito que monitora o papel do usuário e vira a chave da interface na hora
   useEffect(() => {
     setIsInternalUser(userRole === 'admin' || userRole === 'vendedor');
-  }, [userRole]);
+    
+    // Segurança extra: Se um vendedor estiver numa tela de admin, força ele pra tela de vendas
+    if (userRole === 'vendedor') {
+      const telasBloqueadas = ['estoque', 'equipe', 'despesas', 'sistema', 'pagamentos'];
+      if (telasBloqueadas.includes(currentView)) {
+        setView('vendas');
+      }
+    }
+  }, [userRole, currentView, setView]);
 
-  // Fecha o menu mobile automaticamente ao trocar de tela
   useEffect(() => {
     setIsMobileSidebarOpen(false);
   }, [currentView]);
 
   const handleLogout = async () => {
-    // 1. Encerra a sessão real e persistente no banco do Supabase
     const { supabase } = await import('../services/supabase');
     await supabase.auth.signOut();
-    
-    // 2. Notifica o roteador central para limpar o estado de permissão caso necessário
     if (typeof setUserRole === 'function') setUserRole('cliente');
     setView('loja');
   };
@@ -37,7 +40,7 @@ export default function MainLayout({ children, currentView, setView, userRole, s
           
           {/* BARRA SUPERIOR MOBILE */}
           <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-slate-900 border-b border-slate-800 z-40 flex items-center justify-between px-4">
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView('sistema')}>
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView(userRole === 'admin' ? 'sistema' : 'vendas')}>
               <span className="text-2xl text-lua-gold">🌙</span>
               <span className="font-serif text-lg font-semibold tracking-wide text-white">Lua</span>
             </div>
@@ -68,11 +71,13 @@ export default function MainLayout({ children, currentView, setView, userRole, s
               
               <div className={`flex items-center pb-6 border-b border-slate-800 ${isSidebarOpen ? 'justify-between' : 'md:justify-center justify-between'}`}>
                 
-                <div className={`flex items-center gap-3 cursor-pointer ${!isSidebarOpen && 'md:hidden'}`} onClick={() => setView('sistema')}>
+                <div className={`flex items-center gap-3 cursor-pointer ${!isSidebarOpen && 'md:hidden'}`} onClick={() => setView(userRole === 'admin' ? 'sistema' : 'vendas')}>
                   <span className="text-2xl text-lua-gold">🌙</span>
                   <div className="animate-fade-in">
-                    <span className="font-serif text-lg font-semibold tracking-wide text-white block leading-none">Lua</span>
-                    <span className="text-[10px] uppercase tracking-widest text-lua-rose-light block mt-0.5">Workspace</span>
+                    <span className="font-serif text-lg font-semibold tracking-wide text-white block leading-none">
+                      Lua <i className="text-lua-gold font-light italic">de Pijama</i>
+                    </span>
+                    <span className="text-[9px] uppercase tracking-widest text-slate-400 block mt-1">Workspace</span>
                   </div>
                 </div>
                 
@@ -100,7 +105,7 @@ export default function MainLayout({ children, currentView, setView, userRole, s
               <div className={`mt-4 px-3 py-2 bg-slate-800/60 rounded-xl border border-slate-700/50 flex items-center justify-between animate-fade-in ${!isSidebarOpen && 'md:hidden'}`}>
                 <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Acesso</span>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider bg-lua-rose-dark/20 text-lua-rose-light border border-lua-rose-dark/30">
-                  {userRole === 'admin' ? '🛡️ Gestor' : '👤 PDV'}
+                  {userRole === 'admin' ? '🛡️ Gestor' : '👤 Vendedor'}
                 </span>
               </div>
 
@@ -117,6 +122,7 @@ export default function MainLayout({ children, currentView, setView, userRole, s
                   <span className={`animate-fade-in ${!isSidebarOpen && 'md:hidden'}`}>Clientes</span>
                 </button>
 
+                {/* ESSA CONDICIONAL ESCONDE O MENU GERENCIAL DOS VENDEDORES */}
                 {userRole === 'admin' && (
                   <>
                     <p className={`text-[10px] font-bold tracking-widest uppercase text-slate-500 px-3 pt-4 mb-2 animate-fade-in ${!isSidebarOpen && 'md:hidden'}`}>Gerenciamento</p>
@@ -131,7 +137,6 @@ export default function MainLayout({ children, currentView, setView, userRole, s
                       <span className={`animate-fade-in ${!isSidebarOpen && 'md:hidden'}`}>Gestão de Equipe</span>
                     </button>
 
-                    {/* ✨ NOVA TELA DE DESPESAS INSERIDA AQUI */}
                     <button onClick={() => setView('despesas')} className={`w-full flex items-center rounded-xl text-sm font-medium transition-all duration-200 ${currentView === 'despesas' ? 'bg-lua-rose-dark text-white font-semibold' : 'hover:bg-slate-800 hover:text-white'} ${isSidebarOpen ? 'px-3 py-2.5 gap-3' : 'md:p-3 md:justify-center px-3 py-2.5 gap-3'}`}>
                       <span className="text-base">💸</span> 
                       <span className={`animate-fade-in ${!isSidebarOpen && 'md:hidden'}`}>Gestão de Despesas</span>
@@ -174,45 +179,47 @@ export default function MainLayout({ children, currentView, setView, userRole, s
         </div>
       ) : (
         
-        /* SE FOR CLIENTE OU VISITANTE */
+        /* 🌟 SE FOR CLIENTE OU VISITANTE (LAYOUT PREMIUM) 🌟 */
         <>
-          <header className="bg-white/80 backdrop-blur-md border-b border-slate-100 sticky top-0 z-50 transition-all">
-            <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 md:h-20 flex items-center justify-between">
+          <header className="bg-white/90 backdrop-blur-md border-b border-slate-100 sticky top-0 z-50 transition-all shadow-sm">
+            <div className="max-w-7xl mx-auto px-4 md:px-8 h-16 md:h-20 flex items-center justify-between">
               
-              <div className="flex items-center gap-2 md:gap-3 cursor-pointer group" onClick={() => setView('loja')}>
-                <span className="text-2xl md:text-3xl transition-transform group-hover:rotate-12 duration-300">🌙</span>
-                <div>
-                  <span className="font-serif text-xl md:text-2xl font-semibold tracking-wide text-slate-800 block leading-none">Lua</span>
-                  <span className="text-[8px] md:text-[10px] uppercase tracking-widest text-lua-rose-dark font-bold block mt-0.5 md:mt-1">De Pijama</span>
+              <div className="flex items-center gap-2 cursor-pointer group" onClick={() => setView('loja')}>
+                <span className="text-2xl transition-transform group-hover:scale-110 duration-500">🌙</span>
+                <div className="font-serif text-xl md:text-2xl text-slate-900 font-medium tracking-tight">
+                  Lua <i className="text-lua-rose-dark font-light italic">de Pijama</i>
                 </div>
               </div>
 
-              <nav className="hidden md:flex items-center gap-2 font-medium text-slate-600 text-sm">
-                <button onClick={() => setView('loja')} className={`px-4 py-2 rounded-xl transition-all duration-200 ${currentView === 'loja' ? 'bg-lua-rose-light/40 text-lua-rose-dark font-semibold' : 'hover:bg-slate-50 hover:text-slate-900'}`}>
-                  Loja Online
+              <nav className="hidden md:flex items-center gap-6 font-medium text-sm">
+                <button 
+                  onClick={() => setView('loja')} 
+                  className={`transition-colors duration-300 hover:text-lua-rose-dark ${currentView === 'loja' ? 'text-slate-900 font-semibold border-b-2 border-lua-rose-dark pb-1' : 'text-slate-500'}`}
+                >
+                  Coleção
                 </button>
                 
-                {/* O botão 'Meus Pedidos' só aparece na navbar principal se o usuário estiver logado */}
                 {isLoggedIn && (
-                  <button onClick={() => setView('pedidos')} className={`px-4 py-2 rounded-xl transition-all duration-200 ${currentView === 'pedidos' ? 'bg-lua-rose-light/40 text-lua-rose-dark font-semibold' : 'hover:bg-slate-50 hover:text-slate-900'}`}>
+                  <button 
+                    onClick={() => setView('pedidos')} 
+                    className={`transition-colors duration-300 hover:text-lua-rose-dark ${currentView === 'pedidos' ? 'text-slate-900 font-semibold border-b-2 border-lua-rose-dark pb-1' : 'text-slate-500'}`}
+                  >
                     Meus Pedidos
                   </button>
                 )}
               </nav>
 
-              <div className="flex items-center gap-2 md:gap-4">
+              <div className="flex items-center gap-3 md:gap-5">
                 
-                {/* 🌟 BOTÃO DE PEDIDOS (Aparece no celular e no PC, apenas se logado) */}
                 {isLoggedIn && (
                   <button 
                     onClick={() => setView('pedidos')}
-                    className={`md:hidden text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors px-2 py-1.5 rounded-xl hover:bg-slate-50 ${currentView === 'pedidos' ? 'text-lua-rose-dark bg-slate-50' : 'text-slate-500 hover:text-slate-900'}`}
+                    className={`md:hidden text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors hover:text-lua-rose-dark ${currentView === 'pedidos' ? 'text-lua-rose-dark' : 'text-slate-500'}`}
                   >
                     Pedidos
                   </button>
                 )}
 
-                {/* BOTÃO INTELIGENTE: Minha Conta (se deslogado) / Sair (se logado) */}
                 <button 
                   onClick={() => {
                     if (isLoggedIn) {
@@ -221,35 +228,47 @@ export default function MainLayout({ children, currentView, setView, userRole, s
                       setView('login');
                     }
                   }}
-                  className={`text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors px-2 md:px-3 py-1.5 md:py-2 rounded-xl hover:bg-slate-50 ${currentView === 'login' ? 'text-lua-rose-dark bg-slate-50' : 'text-slate-500 hover:text-slate-900'}`}
+                  className={`text-[10px] md:text-xs font-bold uppercase tracking-widest transition-colors hover:text-lua-rose-dark ${currentView === 'login' ? 'text-lua-rose-dark' : 'text-slate-500'}`}
                 >
                   {isLoggedIn ? (
-                     <span className="text-rose-500">Sair</span>
+                     <span className="text-rose-500 hover:text-rose-600">Sair</span>
                   ) : (
                      <><span className="hidden md:inline">Minha </span>Conta</>
                   )}
                 </button>
 
-                <Button 
-                  variant="primary" 
+                <button 
                   onClick={() => setView('sacola')} 
-                  className="shadow-sm hover:shadow transition-all px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm flex items-center gap-1.5"
+                  className="bg-slate-900 hover:bg-lua-rose-dark text-white transition-all duration-300 px-4 md:px-5 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold tracking-wide flex items-center gap-2 shadow-md hover:shadow-lg"
                 >
                   <span className="md:hidden">🛒</span>
                   <span className="hidden md:inline">Sacola</span> 
-                  <span>({carrinhoContagem || 0})</span>
-                </Button>
+                  {carrinhoContagem > 0 && (
+                    <span className="bg-white/20 px-2 py-0.5 rounded-md text-[10px] ml-1 font-mono">
+                      {carrinhoContagem}
+                    </span>
+                  )}
+                </button>
+
               </div>
             </div>
           </header>
 
-          <main className="flex-grow max-w-7xl w-full mx-auto px-4 md:px-6 py-6 md:py-10">
+          <main className="flex-grow w-full mx-auto px-4 md:px-6 py-6 md:py-8 bg-[#fafafa]">
             {children}
           </main>
 
-          <footer className="bg-white border-t border-slate-100 py-6">
-            <div className="max-w-7xl mx-auto px-4 md:px-6 text-center text-[10px] md:text-xs text-slate-400">
-              <p>© 2026 Lua de Pijama. Todos os direitos reservados.</p>
+          <footer className="bg-white border-t border-slate-100 py-10 mt-auto">
+            <div className="max-w-7xl mx-auto px-4 md:px-6 flex flex-col md:flex-row justify-between items-center gap-4">
+              <div className="flex items-center gap-2 grayscale opacity-50">
+                <span className="text-xl">🌙</span>
+                <div className="font-serif text-lg text-slate-900 font-medium tracking-tight">
+                  Lua <i className="font-light italic">de Pijama</i>
+                </div>
+              </div>
+              <p className="text-[10px] md:text-xs text-slate-400 font-medium uppercase tracking-widest">
+                © 2026. Todos os direitos reservados.
+              </p>
             </div>
           </footer>
         </>
