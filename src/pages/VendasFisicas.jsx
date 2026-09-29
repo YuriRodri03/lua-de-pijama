@@ -19,7 +19,11 @@ export default function VendasFisicas({ userRole }) {
   // Autocomplete e Variações de Produtos
   const [buscaProduto, setBuscaProduto] = useState('');
   const [produtoSelecionado, setProdutoSelecionado] = useState(null);
-  const [variacaoSelecionadaIdx, setVariacaoSelecionadaIdx] = useState(''); 
+  
+  // 🌟 NOVOS ESTADOS SEPARADOS PARA COR E TAMANHO 🌟
+  const [corSelecionada, setCorSelecionada] = useState(''); 
+  const [tamanhoSelecionado, setTamanhoSelecionado] = useState(''); 
+  
   const [mostrarSugestoesProd, setMostrarSugestoesProd] = useState(false);
 
   // Pagamento e Condições
@@ -37,7 +41,6 @@ export default function VendasFisicas({ userRole }) {
   const [carregando, setCarregando] = useState(true);
   const [processandoVenda, setProcessandoVenda] = useState(false);
 
-  // 🌟 FUNÇÃO PARA GERAR O CÓDIGO (REF) NA TELA DE VENDAS 🌟
   const formatarCodigoRef = (id) => {
     if (!id) return '';
     if (Number.isInteger(Number(id))) return `REF-${String(id).padStart(5, '0')}`;
@@ -103,11 +106,22 @@ export default function VendasFisicas({ userRole }) {
     inicializarPDV();
   }, []);
 
+  // 🌟 LÓGICA DAS VARIAÇÕES (EXTRAINDO CORES E TAMANHOS) 🌟
   const variacoesDoProduto = produtoSelecionado 
     ? (typeof produtoSelecionado.variacoes === 'string' ? JSON.parse(produtoSelecionado.variacoes) : (produtoSelecionado.variacoes || []))
     : [];
 
-  // 2. ADICIONAR ITEM AO CARRINHO COM SUPORTE A JSONB
+  const coresDisponiveis = [...new Set(variacoesDoProduto.map(v => v.cor))];
+  const tamanhosDaCor = corSelecionada ? variacoesDoProduto.filter(v => v.cor === corSelecionada) : [];
+
+  // Auto-seleciona a cor se o produto só tiver uma
+  useEffect(() => {
+    if (coresDisponiveis.length === 1 && !corSelecionada) {
+      setCorSelecionada(coresDisponiveis[0]);
+    }
+  }, [coresDisponiveis, corSelecionada]);
+
+  // 2. ADICIONAR ITEM AO CARRINHO
   const handleAdicionarItem = (e) => {
     e.preventDefault();
     if (!produtoSelecionado) {
@@ -115,16 +129,16 @@ export default function VendasFisicas({ userRole }) {
       return;
     }
 
-    if (variacaoSelecionadaIdx === '') {
-      alert('Selecione uma cor e tamanho!');
+    if (!corSelecionada || !tamanhoSelecionado) {
+      alert('Selecione uma cor e um tamanho!');
       return;
     }
 
-    const varEscolhida = variacoesDoProduto[variacaoSelecionadaIdx];
+    const varEscolhida = variacoesDoProduto.find(v => v.cor === corSelecionada && v.tamanho === tamanhoSelecionado);
     const qtdDesejada = parseInt(quantidade);
 
     if (qtdDesejada > varEscolhida.quantidade) {
-      alert(`Quantidade indisponível! Limite atual para esta cor/tamanho é: ${varEscolhida.quantidade} peças.`);
+      alert(`Quantidade indisponível! Limite atual para ${varEscolhida.cor} - ${varEscolhida.tamanho} é: ${varEscolhida.quantidade} peças.`);
       return;
     }
 
@@ -139,14 +153,15 @@ export default function VendasFisicas({ userRole }) {
       quantidade: qtdDesejada,
       precoUnitario: precoUnitarioCalculado,
       totalItem: precoUnitarioCalculado * qtdDesejada,
-      codigoRef: formatarCodigoRef(produtoSelecionado.id) // Salva a REF no carrinho para visualizar
+      codigoRef: formatarCodigoRef(produtoSelecionado.id)
     };
 
     setCarrinho([...carrinho, item]);
     
     setProdutoSelecionado(null);
     setBuscaProduto('');
-    setVariacaoSelecionadaIdx('');
+    setCorSelecionada('');
+    setTamanhoSelecionado('');
     setQuantidade(1);
   };
 
@@ -158,7 +173,7 @@ export default function VendasFisicas({ userRole }) {
   const subtotalVenda = carrinho.reduce((acc, item) => acc + item.totalItem, 0);
   const totalACobrar = Math.max(0, subtotalVenda - parseFloat(desconto || 0));
 
-  // 4. FILTRAR CLIENTES 
+  // 4. FILTRAR CLIENTES
   const clientesFiltrados = listaClientes.filter(c => 
     c.nome.toLowerCase().includes(buscaCliente.toLowerCase()) || 
     (c.cpf && c.cpf.includes(buscaCliente))
@@ -170,13 +185,11 @@ export default function VendasFisicas({ userRole }) {
     setMostrarSugestoes(false);
   };
 
-  // 🌟 5. FILTRO DE PRODUTOS INTELIGENTE (NOME E CÓDIGO) 🌟
+  // 5. FILTRAR PRODUTOS 
   const produtosFiltrados = produtosEstoque.filter(p => {
     const termoBuscaTratado = buscaProduto.toLowerCase().trim();
     const nomeProduto = p.nome.toLowerCase();
     const codigoProduto = formatarCodigoRef(p.id).toLowerCase();
-    
-    // Permite que a pessoa digite só "150" e ache o "REF-00150"
     const numerosDoCodigo = codigoProduto.replace(/\D/g, ''); 
     const numerosDaBusca = termoBuscaTratado.replace(/\D/g, '');
 
@@ -189,8 +202,9 @@ export default function VendasFisicas({ userRole }) {
 
   const selecionarProduto = (prod) => {
     setProdutoSelecionado(prod);
-    setBuscaProduto(prod.nome); // Pode deixar o nome, ou mudar para formatarCodigoRef(prod.id) + " - " + prod.nome se preferir
-    setVariacaoSelecionadaIdx(''); 
+    setBuscaProduto(prod.nome); 
+    setCorSelecionada('');
+    setTamanhoSelecionado(''); 
     setMostrarSugestoesProd(false);
   };
 
@@ -292,15 +306,21 @@ export default function VendasFisicas({ userRole }) {
           statusType="neutral" 
         />
         
-        {/* SELEÇÃO DO VENDEDOR RESPONSÁVEL */}
-        <div className="bg-white border border-lua-rose-dark/20 p-4 md:p-5 rounded-2xl shadow-sm flex flex-col justify-between relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-1 h-full bg-lua-rose-dark rounded-l-2xl"></div>
+        {/* 🌟 SELEÇÃO DO VENDEDOR RESPONSÁVEL COM TRAVA DE SEGURANÇA 🌟 */}
+        <div className={`bg-white border p-4 md:p-5 rounded-2xl shadow-sm flex flex-col justify-between relative overflow-hidden ${userRole !== 'admin' ? 'border-slate-200' : 'border-lua-rose-dark/20'}`}>
+          <div className={`absolute top-0 left-0 w-1 h-full rounded-l-2xl ${userRole !== 'admin' ? 'bg-slate-300' : 'bg-lua-rose-dark'}`}></div>
           <div className="flex flex-col h-full pl-2">
-            <span className="text-[10px] md:text-xs font-bold uppercase tracking-widest text-slate-400 mb-1.5">Vendedor Responsável</span>
+            <div className="flex items-center justify-between mb-1.5">
+               <span className="text-[10px] md:text-xs font-bold uppercase tracking-widest text-slate-400">Vendedor Responsável</span>
+               {userRole !== 'admin' && <span className="text-[9px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold uppercase">Restrito</span>}
+            </div>
             <select
               value={vendedorId}
               onChange={(e) => setVendedorId(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-bold text-slate-700 focus:outline-none focus:border-lua-rose-dark"
+              disabled={userRole !== 'admin'} // TRAVA DE SEGURANÇA AQUI
+              className={`w-full bg-slate-50 border rounded-lg px-2 py-1.5 text-sm font-bold focus:outline-none focus:border-lua-rose-dark ${
+                userRole !== 'admin' ? 'border-slate-100 text-slate-500 cursor-not-allowed' : 'border-slate-200 text-slate-700'
+              }`}
             >
               <option value="" disabled>Selecione quem está vendendo...</option>
               {equipe.map(v => (
@@ -313,10 +333,8 @@ export default function VendasFisicas({ userRole }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8">
         
-        {/* ENTRADA DE ITENS E CLIENTE */}
         <div className="lg:col-span-2 space-y-4 md:space-y-6">
           
-          {/* AUTOCOMPLETE DE CLIENTES */}
           <div className="bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs relative">
             <h3 className="font-serif text-base md:text-lg font-bold text-slate-800 mb-3 md:mb-4 flex items-center gap-2"><span>👤</span> Identificar Cliente</h3>
             <div className="relative">
@@ -353,7 +371,6 @@ export default function VendasFisicas({ userRole }) {
             <p className="text-[10px] text-slate-400 mt-2 ml-1">Cliente Selecionado Atual: <b>{clienteSelecionado.nome}</b></p>
           </div>
 
-          {/* 🌟 REGISTRAR PRODUTO (BUSCA POR NOME OU CÓDIGO) 🌟 */}
           <div className="bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs">
             <h3 className="font-serif text-base md:text-lg font-bold text-slate-800 mb-3 md:mb-4 flex items-center gap-2"><span>🛍️</span> Lançar Pijama</h3>
             <form onSubmit={handleAdicionarItem} className="space-y-4">
@@ -386,7 +403,6 @@ export default function VendasFisicas({ userRole }) {
                           className="p-3 text-xs md:text-sm text-slate-700 hover:bg-slate-50 cursor-pointer flex justify-between items-center font-medium"
                         >
                           <span className="truncate pr-2 flex items-center">
-                             {/* Mostra a tag de código REF na lista */}
                              <span className="text-[9px] font-mono font-bold text-slate-500 mr-2 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 tracking-widest">{formatarCodigoRef(p.id)}</span>
                              {p.nome}
                           </span>
@@ -400,9 +416,8 @@ export default function VendasFisicas({ userRole }) {
                 )}
               </div>
 
-              {/* 🌟 ESCOLHA DA COR E TAMANHO ESPECÍFICA 🌟 */}
               {produtoSelecionado && (
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 animate-fade-in">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4 animate-fade-in">
                   <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                      <span className="text-sm font-bold text-slate-800 flex items-center">
                         <span className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded font-mono text-slate-600 mr-2 border border-slate-300">{formatarCodigoRef(produtoSelecionado.id)}</span>
@@ -411,26 +426,50 @@ export default function VendasFisicas({ userRole }) {
                      <span className="text-xs font-mono font-bold text-lua-rose-dark">Base: R$ {parseFloat(produtoSelecionado.preco_varejo).toFixed(2)}</span>
                   </div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                  {/* 🌟 CASCATA SEPARADA DE COR E TAMANHO 🌟 */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                    
+                    {/* Seletor de Cor */}
                     <div className="md:col-span-2">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5">2. Selecione Cor / Tamanho</label>
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5">2. Cor</label>
                       <select 
-                        value={variacaoSelecionadaIdx} 
-                        onChange={(e) => setVariacaoSelecionadaIdx(e.target.value)} 
+                        value={corSelecionada} 
+                        onChange={(e) => {
+                          setCorSelecionada(e.target.value);
+                          setTamanhoSelecionado(''); // Reseta o tamanho ao trocar de cor
+                        }} 
                         className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark shadow-sm"
                         required
                       >
-                        <option value="" disabled>Selecione a opção desejada...</option>
-                        {variacoesDoProduto.map((v, idx) => (
-                          <option key={idx} value={idx} disabled={v.quantidade <= 0}>
-                            {v.cor} - {v.tamanho} (Disp: {v.quantidade} un) {v.preco_adicional > 0 ? ` [+R$ ${v.preco_adicional}]` : ''}
+                        <option value="" disabled>Selecione a cor...</option>
+                        {coresDisponiveis.map((cor, idx) => (
+                          <option key={idx} value={cor}>{cor}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Seletor de Tamanho */}
+                    <div className="md:col-span-1">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5">3. Tamanho</label>
+                      <select 
+                        value={tamanhoSelecionado} 
+                        onChange={(e) => setTamanhoSelecionado(e.target.value)} 
+                        disabled={!corSelecionada}
+                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark shadow-sm disabled:bg-slate-100 disabled:text-slate-400"
+                        required
+                      >
+                        <option value="" disabled>Tamanho...</option>
+                        {tamanhosDaCor.map((v, idx) => (
+                          <option key={idx} value={v.tamanho} disabled={v.quantidade <= 0}>
+                            {v.tamanho} {v.quantidade <= 0 ? '(Esgotado)' : `(${v.quantidade} un)`} {v.preco_adicional > 0 ? ` [+R$ ${v.preco_adicional}]` : ''}
                           </option>
                         ))}
                       </select>
                     </div>
 
-                    <div>
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5">3. Quantidade</label>
+                    {/* Input de Quantidade */}
+                    <div className="md:col-span-1">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5">4. Qtd.</label>
                       <input 
                         type="number" 
                         min="1" 
@@ -450,7 +489,6 @@ export default function VendasFisicas({ userRole }) {
             </form>
           </div>
 
-          {/* TABELA DE ITENS DA VENDA */}
           <div className="bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs">
             <h3 className="font-serif text-base md:text-lg font-bold text-slate-800 mb-3 md:mb-4">Sacola Operacional</h3>
             {carrinho.length === 0 ? (
@@ -491,7 +529,6 @@ export default function VendasFisicas({ userRole }) {
           </div>
         </div>
 
-        {/* PROCESSO DE FECHAMENTO */}
         <div className="bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs flex flex-col justify-between h-fit space-y-5 md:space-y-6">
           <div>
             <h3 className="font-serif text-base md:text-lg font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4">Condições Comerciais</h3>
@@ -567,7 +604,6 @@ export default function VendasFisicas({ userRole }) {
         </div>
       </div>
 
-      {/* HISTÓRICO ATUALIZADO (COM HORA E VENDEDOR DA VENDA) */}
       {!carregando && vendasRealizadas.length > 0 && (
         <div className="bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs">
           <h3 className="font-serif text-base md:text-lg font-bold text-slate-800 mb-3 md:mb-4">Últimas Vendas (Caixa de Hoje)</h3>
