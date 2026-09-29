@@ -7,18 +7,19 @@ export default function VendasFisicas({ userRole }) {
   // Dados do Banco
   const [produtosEstoque, setProdutosEstoque] = useState([]);
   const [listaClientes, setListaClientes] = useState([]);
+  const [equipe, setEquipe] = useState([]); 
 
-  // Identificação do Vendedor Ativo (Exibe o Nome)
-  const [vendedorNome, setVendedorNome] = useState('Bypass Admin');
+  // Identificação do Vendedor Ativo 
+  const [vendedorId, setVendedorId] = useState('');
 
   // Estados da Venda / Carrinho
   const [carrinho, setCarrinho] = useState([]);
-  const [tamanho, setTamanho] = useState('M');
   const [quantidade, setQuantidade] = useState(1);
   
-  // Autocomplete de Produtos
+  // Autocomplete e Variações de Produtos
   const [buscaProduto, setBuscaProduto] = useState('');
   const [produtoSelecionado, setProdutoSelecionado] = useState(null);
+  const [variacaoSelecionadaIdx, setVariacaoSelecionadaIdx] = useState(''); 
   const [mostrarSugestoesProd, setMostrarSugestoesProd] = useState(false);
 
   // Pagamento e Condições
@@ -36,41 +37,51 @@ export default function VendasFisicas({ userRole }) {
   const [carregando, setCarregando] = useState(true);
   const [processandoVenda, setProcessandoVenda] = useState(false);
 
-  // 1. CARREGAR PRODUTOS, CLIENTES E IDENTIFICAR OPERADOR DO CAIXA (PELO NOME)
+  // 🌟 FUNÇÃO PARA GERAR O CÓDIGO (REF) NA TELA DE VENDAS 🌟
+  const formatarCodigoRef = (id) => {
+    if (!id) return '';
+    if (Number.isInteger(Number(id))) return `REF-${String(id).padStart(5, '0')}`;
+    const numeros = String(id).replace(/\D/g, '');
+    if (numeros.length >= 5) return `REF-${numeros.substring(0, 5)}`;
+    return `REF-${String(id).substring(0, 5).toUpperCase()}`;
+  };
+
+  // 1. CARREGAR DADOS INICIAIS
   async function inicializarPDV() {
     try {
       setCarregando(true);
       
-      // Captura o usuário autenticado de fato no Supabase
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        // Tenta buscar o nome salvo nos metadados ou extrai o início do e-mail
-        const nomeIdentificado = user.user_metadata?.nome 
-          || user.user_metadata?.full_name 
-          || (user.email ? user.email.split('@')[0] : 'Operador');
-        
-        setVendedorNome(nomeIdentificado);
-      } else {
-        setVendedorNome('Bypass Admin');
+
+      const { data: equipeData } = await supabase
+        .from('perfis')
+        .select('id, nome')
+        .in('role', ['vendedor', 'admin'])
+        .order('nome');
+      
+      setEquipe(equipeData || []);
+
+      if (user && equipeData) {
+        const usuarioAtual = equipeData.find(e => e.id === user.id);
+        if (usuarioAtual) setVendedorId(usuarioAtual.id);
       }
 
-      // Puxa produtos direto do estoque real
       const { data: prods, error: prodError } = await supabase
         .from('produtos')
-        .select('id, nome, preco_varejo, quantidade_estoque')
-        .gt('quantidade_estoque', 0)
+        .select('id, nome, preco_varejo, variacoes, foto_url')
         .order('nome', { ascending: true });
 
       if (prodError) throw prodError;
-      setProdutosEstoque(prods || []);
+      
+      const prodsComEstoque = (prods || []).filter(p => {
+         const vars = typeof p.variacoes === 'string' ? JSON.parse(p.variacoes) : (p.variacoes || []);
+         return vars.some(v => v.quantidade > 0);
+      });
+      setProdutosEstoque(prodsComEstoque);
 
-      // Puxa clientes para o autocomplete
-      const { data: clis } = await supabase
-        .from('clientes')
-        .select('nome, cpf');
+      const { data: clis } = await supabase.from('clientes').select('nome, cpf');
       setListaClientes(clis || []);
 
-      // Histórico de vendas do dia
       const hojeInicio = new Date();
       hojeInicio.setHours(0,0,0,0);
       const { data: vnds } = await supabase
@@ -92,7 +103,11 @@ export default function VendasFisicas({ userRole }) {
     inicializarPDV();
   }, []);
 
-  // 2. ADICIONAR ITEM AO CARRINHO
+  const variacoesDoProduto = produtoSelecionado 
+    ? (typeof produtoSelecionado.variacoes === 'string' ? JSON.parse(produtoSelecionado.variacoes) : (produtoSelecionado.variacoes || []))
+    : [];
+
+  // 2. ADICIONAR ITEM AO CARRINHO COM SUPORTE A JSONB
   const handleAdicionarItem = (e) => {
     e.preventDefault();
     if (!produtoSelecionado) {
@@ -100,26 +115,38 @@ export default function VendasFisicas({ userRole }) {
       return;
     }
 
-    if (parseInt(quantidade) > produtoSelecionado.quantidade_estoque) {
-      alert(`Quantidade indisponível no estoque! Limite atual: ${produtoSelecionado.quantidade_estoque} peças.`);
+    if (variacaoSelecionadaIdx === '') {
+      alert('Selecione uma cor e tamanho!');
       return;
     }
+
+    const varEscolhida = variacoesDoProduto[variacaoSelecionadaIdx];
+    const qtdDesejada = parseInt(quantidade);
+
+    if (qtdDesejada > varEscolhida.quantidade) {
+      alert(`Quantidade indisponível! Limite atual para esta cor/tamanho é: ${varEscolhida.quantidade} peças.`);
+      return;
+    }
+
+    const precoUnitarioCalculado = Number(produtoSelecionado.preco_varejo) + Number(varEscolhida.preco_adicional || 0);
 
     const item = {
       idTemp: Date.now(),
       produtoId: produtoSelecionado.id,
-      nome: produtoSelecionado.nome,
-      tamanho,
-      quantidade: parseInt(quantidade),
-      precoUnitario: parseFloat(produtoSelecionado.preco_varejo),
-      totalItem: parseFloat(produtoSelecionado.preco_varejo) * parseInt(quantidade)
+      nome: `${produtoSelecionado.nome} | ${varEscolhida.cor} - ${varEscolhida.tamanho}`,
+      cor: varEscolhida.cor,
+      tamanho: varEscolhida.tamanho,
+      quantidade: qtdDesejada,
+      precoUnitario: precoUnitarioCalculado,
+      totalItem: precoUnitarioCalculado * qtdDesejada,
+      codigoRef: formatarCodigoRef(produtoSelecionado.id) // Salva a REF no carrinho para visualizar
     };
 
     setCarrinho([...carrinho, item]);
     
-    // Reseta autocomplete de produto
     setProdutoSelecionado(null);
     setBuscaProduto('');
+    setVariacaoSelecionadaIdx('');
     setQuantidade(1);
   };
 
@@ -131,7 +158,7 @@ export default function VendasFisicas({ userRole }) {
   const subtotalVenda = carrinho.reduce((acc, item) => acc + item.totalItem, 0);
   const totalACobrar = Math.max(0, subtotalVenda - parseFloat(desconto || 0));
 
-  // 4. FILTRAR CLIENTES (AUTOCOMPLETE)
+  // 4. FILTRAR CLIENTES 
   const clientesFiltrados = listaClientes.filter(c => 
     c.nome.toLowerCase().includes(buscaCliente.toLowerCase()) || 
     (c.cpf && c.cpf.includes(buscaCliente))
@@ -143,53 +170,75 @@ export default function VendasFisicas({ userRole }) {
     setMostrarSugestoes(false);
   };
 
-  // 5. FILTRAR PRODUTOS (AUTOCOMPLETE)
-  const produtosFiltrados = produtosEstoque.filter(p =>
-    p.nome.toLowerCase().includes(buscaProduto.toLowerCase())
-  );
+  // 🌟 5. FILTRO DE PRODUTOS INTELIGENTE (NOME E CÓDIGO) 🌟
+  const produtosFiltrados = produtosEstoque.filter(p => {
+    const termoBuscaTratado = buscaProduto.toLowerCase().trim();
+    const nomeProduto = p.nome.toLowerCase();
+    const codigoProduto = formatarCodigoRef(p.id).toLowerCase();
+    
+    // Permite que a pessoa digite só "150" e ache o "REF-00150"
+    const numerosDoCodigo = codigoProduto.replace(/\D/g, ''); 
+    const numerosDaBusca = termoBuscaTratado.replace(/\D/g, '');
+
+    return (
+      nomeProduto.includes(termoBuscaTratado) || 
+      codigoProduto.includes(termoBuscaTratado) ||
+      (numerosDaBusca.length > 0 && numerosDoCodigo.includes(numerosDaBusca))
+    );
+  });
 
   const selecionarProduto = (prod) => {
     setProdutoSelecionado(prod);
-    setBuscaProduto(prod.nome);
+    setBuscaProduto(prod.nome); // Pode deixar o nome, ou mudar para formatarCodigoRef(prod.id) + " - " + prod.nome se preferir
+    setVariacaoSelecionadaIdx(''); 
     setMostrarSugestoesProd(false);
   };
 
   // 6. FINALIZAR VENDA INTEGRADA
   const handleFinalizarVenda = async () => {
     if (carrinho.length === 0 || processandoVenda) return;
+    if (!vendedorId) {
+      alert("Por favor, selecione o Vendedor Responsável por esta venda.");
+      return;
+    }
 
     try {
       setProcessandoVenda(true);
 
-      // Passo A: Abater do estoque
-      for (const item of carrinho) {
-        const { data: prodAtual } = await supabase
+      const promessasEstoque = carrinho.map(async (item) => {
+        const { data: prodDb } = await supabase
           .from('produtos')
-          .select('quantidade_estoque')
+          .select('variacoes')
           .eq('id', item.produtoId)
           .single();
 
-        const novoEstoque = (prodAtual?.quantidade_estoque || 0) - item.quantidade;
+        if (!prodDb?.variacoes) return;
 
-        const { error: updateError } = await supabase
-          .from('produtos')
-          .update({ quantidade_estoque: novoEstoque })
-          .eq('id', item.produtoId);
+        let vars = typeof prodDb.variacoes === 'string' ? JSON.parse(prodDb.variacoes) : prodDb.variacoes;
 
-        if (updateError) throw updateError;
-      }
+        const novasVars = vars.map(v => {
+          if (v.cor === item.cor && v.tamanho === item.tamanho) {
+             return { ...v, quantidade: Math.max(0, v.quantidade - item.quantidade) };
+          }
+          return v;
+        });
 
-      // Passo B: Persistir cabeçalho (CORRIGIDO)
+        await supabase.from('produtos').update({ variacoes: novasVars }).eq('id', item.produtoId);
+      });
+
+      await Promise.all(promessasEstoque);
+
       const { error: insertError } = await supabase
         .from('vendas')
         .insert([{
-          vendedor_id: vendedorNome,
+          vendedor_id: vendedorId, 
           cliente_nome: clienteSelecionado.nome,
           cliente_cpf: clienteSelecionado.cpf || null,
           total: totalACobrar,
           tipo_venda: 'pdv',
-          forma_pagamento: formaPagamento, // Forma de pagamento incluída
-          status_pagamento: 'pago',        // Status da venda PDV como pago
+          forma_pagamento: formaPagamento,
+          status_pagamento: 'pago',
+          status_entrega: 'entregue', 
           desconto: parseFloat(desconto || 0),
           parcelas: formaPagamento === 'credito' ? parseInt(parcelas) : 1,
           itens: carrinho
@@ -199,7 +248,6 @@ export default function VendasFisicas({ userRole }) {
 
       alert('Venda corporativa finalizada e integrada ao estoque com sucesso!');
       
-      // Reseta PDV
       setCarrinho([]);
       setDesconto(0);
       setParcelas(1);
@@ -219,8 +267,13 @@ export default function VendasFisicas({ userRole }) {
 
   const totalVendidoHoje = vendasRealizadas.reduce((acc, v) => acc + parseFloat(v.total), 0);
 
+  const getNomeVendedor = (id) => {
+    const v = equipe.find(e => e.id === id);
+    return v ? v.nome : 'Desconhecido';
+  };
+
   return (
-    <div className="space-y-6 md:space-y-8 text-left pb-16">
+    <div className="space-y-6 md:space-y-8 text-left pb-16 animate-fade-in">
       
       {/* CARD DE MÉTRICAS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
@@ -238,12 +291,24 @@ export default function VendasFisicas({ userRole }) {
           statusText={`Líquido a receber: R$ ${totalACobrar.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} 
           statusType="neutral" 
         />
-        <StatCard 
-          label="Operador do Caixa" 
-          value={vendedorNome} 
-          statusText={`Sessão Operacional Ativa`} 
-          statusType="alert" 
-        />
+        
+        {/* SELEÇÃO DO VENDEDOR RESPONSÁVEL */}
+        <div className="bg-white border border-lua-rose-dark/20 p-4 md:p-5 rounded-2xl shadow-sm flex flex-col justify-between relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-1 h-full bg-lua-rose-dark rounded-l-2xl"></div>
+          <div className="flex flex-col h-full pl-2">
+            <span className="text-[10px] md:text-xs font-bold uppercase tracking-widest text-slate-400 mb-1.5">Vendedor Responsável</span>
+            <select
+              value={vendedorId}
+              onChange={(e) => setVendedorId(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-bold text-slate-700 focus:outline-none focus:border-lua-rose-dark"
+            >
+              <option value="" disabled>Selecione quem está vendendo...</option>
+              {equipe.map(v => (
+                <option key={v.id} value={v.id}>👤 {v.nome}</option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8">
@@ -253,7 +318,7 @@ export default function VendasFisicas({ userRole }) {
           
           {/* AUTOCOMPLETE DE CLIENTES */}
           <div className="bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs relative">
-            <h3 className="font-serif text-base md:text-lg font-bold text-slate-800 mb-3 md:mb-4">Identificar Cliente</h3>
+            <h3 className="font-serif text-base md:text-lg font-bold text-slate-800 mb-3 md:mb-4 flex items-center gap-2"><span>👤</span> Identificar Cliente</h3>
             <div className="relative">
               <input 
                 type="text"
@@ -264,12 +329,12 @@ export default function VendasFisicas({ userRole }) {
                   setMostrarSugestoes(true);
                 }}
                 onFocus={() => setMostrarSugestoes(true)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 md:px-4 py-2.5 md:py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 md:px-4 py-2.5 md:py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark shadow-sm"
               />
               {mostrarSugestoes && buscaCliente && (
                 <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto z-50 divide-y divide-slate-100">
                   {clientesFiltrados.length === 0 ? (
-                    <div className="p-3 text-xs text-slate-400">Nenhum cliente com esse padrão.</div>
+                    <div className="p-3 text-xs text-slate-400">Nenhum cliente com esse padrão. Deixe em branco se for venda rápida.</div>
                   ) : (
                     clientesFiltrados.map((c, idx) => (
                       <div 
@@ -277,7 +342,7 @@ export default function VendasFisicas({ userRole }) {
                         onClick={() => selecionarCliente(c)}
                         className="p-3 text-xs md:text-sm text-slate-700 hover:bg-slate-50 cursor-pointer flex justify-between font-medium"
                       >
-                        <span>👤 {c.nome}</span>
+                        <span>{c.nome}</span>
                         <span className="text-[10px] md:text-xs text-slate-400 font-mono">{c.cpf || 'Sem CPF'}</span>
                       </div>
                     ))
@@ -285,19 +350,19 @@ export default function VendasFisicas({ userRole }) {
                 </div>
               )}
             </div>
+            <p className="text-[10px] text-slate-400 mt-2 ml-1">Cliente Selecionado Atual: <b>{clienteSelecionado.nome}</b></p>
           </div>
 
-          {/* REGISTRAR PRODUTO */}
+          {/* 🌟 REGISTRAR PRODUTO (BUSCA POR NOME OU CÓDIGO) 🌟 */}
           <div className="bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs">
-            <h3 className="font-serif text-base md:text-lg font-bold text-slate-800 mb-3 md:mb-4">Registrar Pijama</h3>
+            <h3 className="font-serif text-base md:text-lg font-bold text-slate-800 mb-3 md:mb-4 flex items-center gap-2"><span>🛍️</span> Lançar Pijama</h3>
             <form onSubmit={handleAdicionarItem} className="space-y-4">
               
-              {/* Input de Busca + Dropdown */}
               <div className="relative">
-                <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Buscar Pijama no Estoque</label>
+                <label className="text-xs font-semibold uppercase text-slate-500 block mb-1.5">1. Buscar Modelo</label>
                 <input 
                   type="text"
-                  placeholder="Busque pelo nome do pijama..."
+                  placeholder="Digite o nome ou código (ex: 150) do pijama..."
                   value={buscaProduto}
                   onChange={(e) => {
                     setBuscaProduto(e.target.value);
@@ -305,24 +370,28 @@ export default function VendasFisicas({ userRole }) {
                     if (produtoSelecionado) setProdutoSelecionado(null); 
                   }}
                   onFocus={() => setMostrarSugestoesProd(true)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 md:px-4 py-2.5 md:py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark h-auto md:h-9.5"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark shadow-sm font-medium placeholder:font-normal"
                   required
                 />
                 
                 {mostrarSugestoesProd && buscaProduto && (
                   <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto z-50 divide-y divide-slate-100">
                     {produtosFiltrados.length === 0 ? (
-                      <div className="p-3 text-xs text-slate-400">Nenhum modelo em estoque.</div>
+                      <div className="p-3 text-xs text-slate-400">Nenhum modelo em estoque com essa referência.</div>
                     ) : (
                       produtosFiltrados.map((p) => (
                         <div 
                           key={p.id}
                           onClick={() => selecionarProduto(p)}
-                          className="p-3 text-xs md:text-sm text-slate-700 hover:bg-slate-50 cursor-pointer flex justify-between font-medium"
+                          className="p-3 text-xs md:text-sm text-slate-700 hover:bg-slate-50 cursor-pointer flex justify-between items-center font-medium"
                         >
-                          <span className="truncate pr-2">👕 {p.nome}</span>
-                          <span className="text-[10px] md:text-xs font-mono font-semibold text-lua-rose-dark shrink-0">
-                            R$ {parseFloat(p.preco_varejo).toFixed(2)} ({p.quantidade_estoque} un)
+                          <span className="truncate pr-2 flex items-center">
+                             {/* Mostra a tag de código REF na lista */}
+                             <span className="text-[9px] font-mono font-bold text-slate-500 mr-2 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 tracking-widest">{formatarCodigoRef(p.id)}</span>
+                             {p.nome}
+                          </span>
+                          <span className="text-[10px] md:text-xs font-mono font-semibold text-lua-rose-dark shrink-0 bg-lua-rose-light/20 px-2 py-0.5 rounded">
+                            R$ {parseFloat(p.preco_varejo).toFixed(2)}
                           </span>
                         </div>
                       ))
@@ -331,40 +400,53 @@ export default function VendasFisicas({ userRole }) {
                 )}
               </div>
 
-              {/* Sub-painel de Detalhes + Campos adicionais (Tamanho, Qtd, Inserir) */}
-              <div className="grid grid-cols-2 md:grid-cols-12 gap-3 md:gap-4 items-center">
-                
-                {/* Painel Informativo Dinâmico */}
-                <div className="col-span-2 md:col-span-5 flex items-center min-h-[38px]">
-                  {produtoSelecionado ? (
-                    <div className="w-full flex items-center justify-between text-[11px] md:text-xs bg-lua-cream/40 border border-lua-rose-dark/10 text-lua-rose-dark px-3 py-2 rounded-xl font-medium animate-fade-in shadow-xs">
-                      <span>💵 Preço: <strong>R$ {parseFloat(produtoSelecionado.preco_varejo).toFixed(2)}</strong></span>
-                      <span className="text-slate-200 mx-1">|</span>
-                      <span>📦 Estoque: <strong>{produtoSelecionado.quantidade_estoque} un</strong></span>
+              {/* 🌟 ESCOLHA DA COR E TAMANHO ESPECÍFICA 🌟 */}
+              {produtoSelecionado && (
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 animate-fade-in">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                     <span className="text-sm font-bold text-slate-800 flex items-center">
+                        <span className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded font-mono text-slate-600 mr-2 border border-slate-300">{formatarCodigoRef(produtoSelecionado.id)}</span>
+                        {produtoSelecionado.nome}
+                     </span>
+                     <span className="text-xs font-mono font-bold text-lua-rose-dark">Base: R$ {parseFloat(produtoSelecionado.preco_varejo).toFixed(2)}</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                    <div className="md:col-span-2">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5">2. Selecione Cor / Tamanho</label>
+                      <select 
+                        value={variacaoSelecionadaIdx} 
+                        onChange={(e) => setVariacaoSelecionadaIdx(e.target.value)} 
+                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark shadow-sm"
+                        required
+                      >
+                        <option value="" disabled>Selecione a opção desejada...</option>
+                        {variacoesDoProduto.map((v, idx) => (
+                          <option key={idx} value={idx} disabled={v.quantidade <= 0}>
+                            {v.cor} - {v.tamanho} (Disp: {v.quantidade} un) {v.preco_adicional > 0 ? ` [+R$ ${v.preco_adicional}]` : ''}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                  ) : (
-                    <span className="text-[11px] md:text-xs text-slate-400 italic">Pesquise e selecione um modelo.</span>
-                  )}
-                </div>
 
-                <div className="col-span-1 md:col-span-2">
-                  <select value={tamanho} onChange={(e) => setTamanho(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 md:py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark h-auto md:h-9.5">
-                    <option value="P">P</option>
-                    <option value="M">M</option>
-                    <option value="G">G</option>
-                    <option value="GG">GG</option>
-                  </select>
-                </div>
+                    <div>
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5">3. Quantidade</label>
+                      <input 
+                        type="number" 
+                        min="1" 
+                        value={quantidade} 
+                        onChange={(e) => setQuantidade(e.target.value)} 
+                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark text-center shadow-sm font-mono" 
+                        required 
+                      />
+                    </div>
+                  </div>
 
-                <div className="col-span-1 md:col-span-2">
-                  <input type="number" min="1" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 md:py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark h-auto md:h-9.5 text-center" required />
+                  <Button variant="primary" type="submit" className="w-full py-2.5 mt-2 shadow-sm text-sm">
+                    Adicionar à Sacola
+                  </Button>
                 </div>
-
-                <div className="col-span-2 md:col-span-3">
-                  <Button variant="primary" type="submit" className="w-full py-2.5 md:py-2 md:h-9.5 text-sm">+ Inserir</Button>
-                </div>
-              </div>
-
+              )}
             </form>
           </div>
 
@@ -378,23 +460,26 @@ export default function VendasFisicas({ userRole }) {
                 <table className="w-full text-left text-sm text-slate-600 min-w-[450px]">
                   <thead>
                     <tr className="bg-lua-cream border-b border-lua-rose-dark/10 text-slate-500 text-[10px] md:text-xs uppercase whitespace-nowrap">
-                      <th className="p-3">Item</th>
-                      <th className="p-3 text-center">Tam</th>
+                      <th className="p-3">Item e Variação</th>
                       <th className="p-3 text-center">Qtd</th>
-                      <th className="p-3">Valor</th>
+                      <th className="p-3 text-right">Valor Un.</th>
+                      <th className="p-3 text-right">Total</th>
                       <th className="p-3 text-right">Ação</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {carrinho.map(item => (
                       <tr key={item.idTemp}>
-                        <td className="p-3 font-medium text-slate-800 text-xs md:text-sm max-w-[150px] truncate">{item.nome}</td>
-                        <td className="p-3 text-xs md:text-sm font-bold text-lua-rose-dark text-center">{item.tamanho}</td>
+                        <td className="p-3 font-medium text-slate-800 text-xs md:text-sm max-w-[200px] truncate">
+                          <span className="text-[9px] text-slate-400 font-mono tracking-widest mr-1.5">{item.codigoRef}</span>
+                          {item.nome}
+                        </td>
                         <td className="p-3 text-xs md:text-sm text-center">{item.quantidade}x</td>
-                        <td className="p-3 font-semibold text-slate-800 text-xs md:text-sm whitespace-nowrap">R$ {item.totalItem.toFixed(2)}</td>
+                        <td className="p-3 font-mono text-slate-500 text-xs text-right">R$ {item.precoUnitario.toFixed(2)}</td>
+                        <td className="p-3 font-mono font-bold text-slate-800 text-xs md:text-sm text-right">R$ {item.totalItem.toFixed(2)}</td>
                         <td className="p-3 text-right">
                           <button onClick={() => handleRemoverItem(item.idTemp)} className="text-[10px] md:text-xs text-rose-500 hover:text-rose-700 font-bold cursor-pointer bg-rose-50 hover:bg-rose-100 px-2 py-1.5 rounded-lg transition-colors border border-rose-100">
-                            Remover
+                            ✕
                           </button>
                         </td>
                       </tr>
@@ -447,7 +532,7 @@ export default function VendasFisicas({ userRole }) {
               )}
 
               <div>
-                <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Aplicar Desconto (R$)</label>
+                <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Aplicar Desconto Fixo (R$)</label>
                 <input 
                   type="number"
                   min="0"
@@ -459,49 +544,49 @@ export default function VendasFisicas({ userRole }) {
                 />
               </div>
 
-              <div className="bg-lua-cream/50 p-3 md:p-4 rounded-xl border border-lua-rose-dark/10 mt-4 md:mt-6 space-y-1">
-                <div className="flex justify-between text-[11px] md:text-xs text-slate-400 font-medium">
+              <div className="bg-lua-cream/50 p-4 rounded-xl border border-lua-rose-dark/10 mt-6 space-y-2">
+                <div className="flex justify-between text-[11px] md:text-xs text-slate-500 font-medium">
                   <span>Subtotal:</span>
-                  <span>R$ {subtotalVenda.toFixed(2)}</span>
+                  <span className="font-mono">R$ {subtotalVenda.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-[11px] md:text-xs text-rose-500 font-medium">
-                  <span>Desconto:</span>
-                  <span>- R$ {parseFloat(desconto || 0).toFixed(2)}</span>
+                  <span>Desconto Aplicado:</span>
+                  <span className="font-mono">- R$ {parseFloat(desconto || 0).toFixed(2)}</span>
                 </div>
-                <div className="border-t border-slate-200/60 my-2 pt-2 flex justify-between items-baseline">
-                  <span className="text-[11px] md:text-xs uppercase font-bold text-slate-500">Líquido:</span>
+                <div className="border-t border-slate-200/60 my-2 pt-3 flex justify-between items-baseline">
+                  <span className="text-[11px] md:text-xs uppercase font-bold text-slate-500">Líquido a Cobrar:</span>
                   <span className="text-xl md:text-2xl font-bold text-slate-800 font-mono">R$ {totalACobrar.toFixed(2)}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <Button variant="gold" onClick={handleFinalizarVenda} disabled={carrinho.length === 0 || processandoVenda} className="w-full py-3 md:py-3.5 text-sm font-bold shadow-md">
-            {processandoVenda ? 'Processando...' : 'Concluir Registro'}
+          <Button variant="gold" onClick={handleFinalizarVenda} disabled={carrinho.length === 0 || processandoVenda || !vendedorId} className="w-full py-3 md:py-4 text-sm font-bold shadow-md uppercase tracking-wider">
+            {processandoVenda ? 'Processando Baixa...' : 'Finalizar Venda 💰'}
           </Button>
         </div>
       </div>
 
-      {/* HISTÓRICO ATUALIZADO (COM HORA DA VENDA) */}
+      {/* HISTÓRICO ATUALIZADO (COM HORA E VENDEDOR DA VENDA) */}
       {!carregando && vendasRealizadas.length > 0 && (
         <div className="bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs">
-          <h3 className="font-serif text-base md:text-lg font-bold text-slate-800 mb-3 md:mb-4">Últimas Vendas (Hoje)</h3>
+          <h3 className="font-serif text-base md:text-lg font-bold text-slate-800 mb-3 md:mb-4">Últimas Vendas (Caixa de Hoje)</h3>
           <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0 pb-2">
             <table className="w-full text-left text-sm text-slate-600 min-w-[600px]">
               <thead>
                 <tr className="bg-lua-cream border-b border-lua-rose-dark/10 text-slate-500 text-[10px] md:text-xs uppercase whitespace-nowrap">
-                  <th className="p-3">ID</th>
-                  <th className="p-3">Cliente / CPF</th>
-                  <th className="p-3">Condição</th>
-                  <th className="p-3">Vendedor</th>
-                  <th className="p-3 text-right">Líquido</th>
+                  <th className="p-3">Pedido / Hora</th>
+                  <th className="p-3">Cliente</th>
+                  <th className="p-3">Pagamento</th>
+                  <th className="p-3 text-center">Vendedor</th>
+                  <th className="p-3 text-right">Valor Líquido</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {vendasRealizadas.map(venda => (
-                  <tr key={venda.id} className="hover:bg-slate-50/20">
-                    <td className="p-3 text-xs md:text-sm font-bold text-slate-800 whitespace-nowrap">
-                      #VD-{venda.id}
+                  <tr key={venda.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="p-3">
+                      <div className="text-xs md:text-sm font-bold text-slate-800 font-mono">#VD-{venda.id.substring(0,5)}</div>
                       {venda.criado_em && (
                         <div className="text-[10px] font-normal text-slate-400 mt-0.5">
                           {new Date(venda.criado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute:'2-digit' })}
@@ -509,20 +594,22 @@ export default function VendasFisicas({ userRole }) {
                       )}
                     </td>
                     <td className="p-3">
-                      <div className="font-medium text-slate-700 text-xs md:text-sm truncate max-w-[150px] md:max-w-xs">{venda.cliente_nome}</div>
-                      <div className="text-[10px] md:text-xs text-slate-400 font-mono">{venda.cliente_cpf || 'Sem CPF'}</div>
+                      <div className="font-medium text-slate-700 text-xs md:text-sm truncate max-w-[150px]">{venda.cliente_nome}</div>
+                      <div className="text-[10px] text-slate-400 font-mono">{venda.cliente_cpf || 'Sem CPF'}</div>
                     </td>
                     <td className="p-3 text-[10px] md:text-xs uppercase font-semibold text-lua-rose-dark whitespace-nowrap">
                       {venda.forma_pagamento} {venda.parcelas > 1 ? `(${venda.parcelas}x)` : ''}
                     </td>
-                    <td className="p-3 text-[11px] md:text-xs font-semibold text-slate-600 whitespace-nowrap">
-                      👤 {venda.vendedor_id || 'Não Informado'}
+                    <td className="p-3 text-[10px] md:text-xs font-semibold text-slate-600 whitespace-nowrap text-center">
+                      <span className="bg-slate-100 px-2 py-1 rounded-md border border-slate-200">
+                         {getNomeVendedor(venda.vendedor_id)}
+                      </span>
                     </td>
                     <td className="p-3 text-right font-bold text-slate-800 font-mono text-xs md:text-sm whitespace-nowrap">
                       R$ {parseFloat(venda.total).toFixed(2)}
                       {parseFloat(venda.desconto) > 0 && (
                         <div className="text-[9px] md:text-[10px] font-normal text-rose-500">
-                          (-R$ {parseFloat(venda.desconto).toFixed(2)})
+                          (Desc. R$ {parseFloat(venda.desconto).toFixed(2)})
                         </div>
                       )}
                     </td>

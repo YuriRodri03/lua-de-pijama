@@ -8,12 +8,11 @@ import {
 } from 'recharts';
 
 export default function PainelSistema({ userRole }) {
-  // Estado para controlar a visão principal (Dashboard vs Pedidos vs Comissões)
   const [visaoPrincipal, setVisaoPrincipal] = useState('dashboard');
 
   const [produtos, setProdutos] = useState([]);
   const [vendas, setVendas] = useState([]);
-  const [equipe, setEquipe] = useState([]); // <-- NOVO: Guarda os vendedores
+  const [equipe, setEquipe] = useState([]); 
   const [custosOperacionais, setCustosOperacionais] = useState(0);
   const [receitaTotal, setReceitaTotal] = useState(0);
   const [dadosFluxoCaixa, setDadosFluxoCaixa] = useState([]);
@@ -27,7 +26,6 @@ export default function PainelSistema({ userRole }) {
   const [mes, setMes] = useState('08');
   const [ano, setAno] = useState('2026');
   
-  // NOVO: Taxa padrão de comissão ajustável pelo gestor na tela
   const [taxaComissao, setTaxaComissao] = useState(5); 
 
   const CORES_GRAFICO = ['#8b5a62', '#a87b82', '#c59ca3', '#e2bec4', '#f1d6db', '#cbd5e1'];
@@ -41,7 +39,6 @@ export default function PainelSistema({ userRole }) {
       let dataInicio = abaAtiva === 'mensal' ? `${ano}-${mes}-01T00:00:00Z` : `${ano}-01-01T00:00:00Z`;
       let dataFim = abaAtiva === 'mensal' ? `${ano}-${mes}-${ultimoDia}T23:59:59Z` : `${ano}-12-31T23:59:59Z`;
 
-      // A. Busca Produtos
       const { data: prodData, error: prodError } = await supabase
         .from('produtos')
         .select('*')
@@ -50,7 +47,6 @@ export default function PainelSistema({ userRole }) {
       if (prodError) throw prodError;
       setProdutos(prodData || []);
 
-      // B. Busca Despesas
       const dataInicioDesp = dataInicio.split('T')[0];
       const dataFimDesp = dataFim.split('T')[0];
       
@@ -62,7 +58,6 @@ export default function PainelSistema({ userRole }) {
 
       if (despError) throw despError;
 
-      // C. Busca Receitas (Agora trazendo o vendedor_id)
       const { data: vendData, error: vendError } = await supabase
         .from('vendas')
         .select('id, total, criado_em, status_pagamento, cliente_nome, cliente_telefone, status_entrega, itens, vendedor_id') 
@@ -73,7 +68,6 @@ export default function PainelSistema({ userRole }) {
       if (vendError) console.warn('Erro ao buscar vendas:', vendError);
       setVendas(vendData || []);
 
-      // D. Busca Equipe (Apenas Vendedores e Admins para calcular comissões)
       const { data: equipeData, error: equipeError } = await supabase
         .from('perfis')
         .select('id, nome, role')
@@ -82,7 +76,6 @@ export default function PainelSistema({ userRole }) {
       if (equipeError) console.warn('Erro ao buscar equipe:', equipeError);
       setEquipe(equipeData || []);
 
-      // E. Fluxo de Caixa (Anual)
       const mesesAbrev = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
       let fluxoAnual = mesesAbrev.map(m => ({ mes: m, receitas: 0, despesas: 0, saldo: 0 }));
 
@@ -114,7 +107,6 @@ export default function PainelSistema({ userRole }) {
 
       setDadosFluxoCaixa(fluxoAnual);
 
-      // F. Totais
       const custoReal = despData?.reduce((acc, curr) => acc + parseFloat(curr.valor), 0) || 0;
       const receitasPagas = vendData?.filter(v => v.status_pagamento === 'pago') || [];
       const receitaReal = receitasPagas.reduce((acc, curr) => acc + parseFloat(curr.total), 0) || 0; 
@@ -167,11 +159,7 @@ export default function PainelSistema({ userRole }) {
     ));
 
     try {
-      const { error } = await supabase
-        .from('vendas')
-        .update({ status_entrega: novoStatus })
-        .eq('id', pedidoId);
-        
+      const { error } = await supabase.from('vendas').update({ status_entrega: novoStatus }).eq('id', pedidoId);
       if (error) throw error;
     } catch (error) {
       console.error('Erro ao atualizar entrega:', error);
@@ -184,7 +172,6 @@ export default function PainelSistema({ userRole }) {
   const vendasPagasDoPeriodo = vendas.filter(v => v.status_pagamento === 'pago');
   
   const desempenhoEquipe = equipe.map(membro => {
-    // Pega todas as vendas pagas onde o vendedor_id é o ID deste membro
     const vendasDoMembro = vendasPagasDoPeriodo.filter(v => v.vendedor_id === membro.id);
     const totalVendido = vendasDoMembro.reduce((acc, v) => acc + parseFloat(v.total || 0), 0);
     const qtdVendas = vendasDoMembro.length;
@@ -196,8 +183,11 @@ export default function PainelSistema({ userRole }) {
       qtdVendas,
       comissao
     };
-  }).sort((a, b) => b.totalVendido - a.totalVendido); // Ordena quem vendeu mais pro topo
+  }).sort((a, b) => b.totalVendido - a.totalVendido); 
 
+  const temVendasNaEquipe = desempenhoEquipe.some(m => m.totalVendido > 0);
+
+  // DADOS ALOCAÇÃO ESTOQUE
   const valorTotalEstoqueVarejo = produtos.reduce((acc, curr) => acc + (parseFloat(curr.preco_varejo || 0) * parseInt(curr.quantidade_estoque || 0)), 0);
   const produtosFiltrados = produtos.filter(prod => prod.nome.toLowerCase().includes(termoBusca.toLowerCase()));
 
@@ -209,6 +199,7 @@ export default function PainelSistema({ userRole }) {
   const outrosAlocacao = dadosAlocacao.slice(5).reduce((acc, curr) => acc + curr.value, 0);
   if (outrosAlocacao > 0) topAlocacao.push({ name: 'Outros Modelos', value: outrosAlocacao });
 
+  // TOOLTIPS PERSONALIZADOS
   const CustomTooltipRosca = ({ active, payload }) => {
     if (active && payload && payload.length) {
       return (
@@ -238,6 +229,32 @@ export default function PainelSistema({ userRole }) {
     return null;
   };
 
+  const CustomTooltipComissao = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-white border border-slate-200 p-3 rounded-xl shadow-lg text-sm min-w-[180px]">
+          <p className="font-bold text-slate-800 mb-2 border-b border-slate-100 pb-1 flex justify-between">
+            {data.nome} <span className="text-[10px] text-slate-400 font-normal uppercase bg-slate-100 px-1 rounded">{data.role}</span>
+          </p>
+          <div className="flex justify-between gap-4 mb-1 text-xs">
+            <span className="text-slate-500">Vendas:</span>
+            <span className="font-bold text-slate-800">{data.qtdVendas}</span>
+          </div>
+          <div className="flex justify-between gap-4 mb-2 text-xs">
+            <span className="text-slate-500">Faturamento:</span>
+            <span className="font-mono font-bold text-slate-800">R$ {data.totalVendido.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+          </div>
+          <div className="flex justify-between gap-4 text-xs bg-emerald-50/50 p-1.5 rounded border border-emerald-100">
+            <span className="text-emerald-700 font-bold">Comissão:</span>
+            <span className="font-mono font-bold text-emerald-600">R$ {data.comissao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="space-y-6 md:space-y-8 pb-16 animate-fade-in text-left">
       
@@ -246,9 +263,7 @@ export default function PainelSistema({ userRole }) {
         <button
           onClick={() => setVisaoPrincipal('dashboard')}
           className={`px-4 md:px-6 py-2.5 rounded-lg text-xs md:text-sm font-bold transition-all duration-300 flex items-center justify-center gap-2 ${
-            visaoPrincipal === 'dashboard' 
-            ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50' 
-            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+            visaoPrincipal === 'dashboard' ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
           }`}
         >
           📈 Dashboard
@@ -256,9 +271,7 @@ export default function PainelSistema({ userRole }) {
         <button
           onClick={() => setVisaoPrincipal('pedidos')}
           className={`px-4 md:px-6 py-2.5 rounded-lg text-xs md:text-sm font-bold transition-all duration-300 flex items-center justify-center gap-2 ${
-            visaoPrincipal === 'pedidos' 
-            ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50' 
-            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+            visaoPrincipal === 'pedidos' ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
           }`}
         >
           📦 Pedidos
@@ -266,21 +279,18 @@ export default function PainelSistema({ userRole }) {
         <button
           onClick={() => setVisaoPrincipal('comissoes')}
           className={`px-4 md:px-6 py-2.5 rounded-lg text-xs md:text-sm font-bold transition-all duration-300 flex items-center justify-center gap-2 ${
-            visaoPrincipal === 'comissoes' 
-            ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50' 
-            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+            visaoPrincipal === 'comissoes' ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
           }`}
         >
           👔 Comissões
         </button>
       </div>
 
-      {/* ------------------------------------------------------------- */}
+      {/* ============================================================= */}
       {/* VISÃO 1: DASHBOARD FINANCEIRO E ESTOQUE */}
-      {/* ------------------------------------------------------------- */}
+      {/* ============================================================= */}
       {visaoPrincipal === 'dashboard' && (
         <div className="space-y-6 md:space-y-8 animate-fade-in">
-          {/* CONTROLES DE DATA */}
           <div className="flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-4 bg-white border border-slate-200/70 p-3 md:p-4 rounded-2xl shadow-sm">
             <div className="flex bg-slate-100/80 p-1 rounded-xl w-full xl:w-auto border border-slate-200/50">
               <button
@@ -309,19 +319,15 @@ export default function PainelSistema({ userRole }) {
                   <option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
                 </select>
               )}
-              {/* ANO DINÂMICO */}
               <select 
                 value={ano} onChange={(e) => setAno(e.target.value)}
                 className="flex-1 xl:flex-none bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs md:text-sm font-semibold text-slate-700 focus:outline-none focus:border-lua-rose-dark cursor-pointer"
               >
-                {Array.from({ length: 10 }, (_, i) => 2024 + i).map(anoGerado => (
-                  <option key={anoGerado} value={anoGerado}>{anoGerado}</option>
-                ))}
+                {Array.from({ length: 10 }, (_, i) => 2024 + i).map(anoGerado => <option key={anoGerado} value={anoGerado}>{anoGerado}</option>)}
               </select>
             </div>
           </div>
 
-          {/* INDICADORES */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
             <StatCard label="Receita Bruta (Paga)" value={`R$ ${receitaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} statusText={abaAtiva === 'mensal' ? 'Faturamento no mês' : 'Faturamento no ano'} statusType="gold" />
             <StatCard label="Despesas Operacionais" value={`R$ ${custosOperacionais.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} statusText={abaAtiva === 'mensal' ? 'Saídas no mês' : 'Saídas no ano'} statusType="alert" />
@@ -329,7 +335,6 @@ export default function PainelSistema({ userRole }) {
             <StatCard label="Capital Estocado" value={`R$ ${valorTotalEstoqueVarejo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} statusText="Patrimônio em prateleira" statusType="gold" />
           </div>
 
-          {/* GRÁFICOS */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
             <div className="lg:col-span-2 bg-white border border-slate-200/70 rounded-2xl p-5 md:p-7 shadow-sm">
               <div className="flex justify-between items-start mb-4">
@@ -390,7 +395,6 @@ export default function PainelSistema({ userRole }) {
             </div>
           </div>
 
-          {/* TABELA DE ESTOQUE */}
           <div className="bg-white border border-slate-200/70 rounded-2xl shadow-sm overflow-hidden mt-6">
             <div className="p-5 md:p-7 border-b border-slate-100 bg-slate-50/50">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
@@ -445,9 +449,9 @@ export default function PainelSistema({ userRole }) {
         </div>
       )}
 
-      {/* ------------------------------------------------------------- */}
+      {/* ============================================================= */}
       {/* VISÃO 2: GESTÃO DE PEDIDOS */}
-      {/* ------------------------------------------------------------- */}
+      {/* ============================================================= */}
       {visaoPrincipal === 'pedidos' && (
         <div className="bg-white border border-slate-200/70 rounded-2xl shadow-sm overflow-hidden animate-fade-in">
           <div className="p-5 md:p-7 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -549,94 +553,161 @@ export default function PainelSistema({ userRole }) {
         </div>
       )}
 
-      {/* ------------------------------------------------------------- */}
+      {/* ============================================================= */}
       {/* VISÃO 3: DESEMPENHO E COMISSÕES DA EQUIPE */}
-      {/* ------------------------------------------------------------- */}
+      {/* ============================================================= */}
       {visaoPrincipal === 'comissoes' && (
-        <div className="bg-white border border-slate-200/70 rounded-2xl shadow-sm overflow-hidden animate-fade-in">
-          <div className="p-5 md:p-7 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-5">
-            <div className="text-left flex-1">
-              <h2 className="text-lg md:text-xl font-bold text-slate-800">Desempenho da Equipe e Comissões</h2>
-              <p className="text-xs md:text-sm text-slate-500 mt-1">Acompanhe as vendas pagas e calcule o repasse para cada membro.</p>
+        <div className="space-y-6 md:space-y-8 animate-fade-in">
+          
+          {/* CONTROLES DE FILTRO DA ABA COMISSÕES */}
+          <div className="flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-4 bg-white border border-slate-200/70 p-3 md:p-4 rounded-2xl shadow-sm">
+            <div className="flex bg-slate-100/80 p-1 rounded-xl w-full xl:w-auto border border-slate-200/50">
+              <button
+                onClick={() => setAbaAtiva('mensal')}
+                className={`flex-1 text-xs md:text-sm font-semibold px-4 py-2.5 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-2 ${abaAtiva === 'mensal' ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+              >
+                📊 Visão Mensal
+              </button>
+              <button
+                onClick={() => setAbaAtiva('anual')}
+                className={`flex-1 text-xs md:text-sm font-semibold px-4 py-2.5 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-2 ${abaAtiva === 'anual' ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+              >
+                📅 Projeção Anual
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 md:gap-3 w-full xl:w-auto justify-between xl:justify-end">
+              <div className="flex items-center mr-2 md:mr-6 gap-2">
+                <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider text-slate-500 hidden sm:inline">Taxa (%):</span>
+                <input 
+                  type="number" min="0" max="100" 
+                  value={taxaComissao} 
+                  onChange={(e) => setTaxaComissao(parseFloat(e.target.value) || 0)}
+                  className="w-16 bg-slate-50 border border-slate-200 rounded-lg px-2 py-2.5 text-xs md:text-sm font-bold text-lua-rose-dark outline-none focus:border-lua-rose-dark text-center"
+                />
+              </div>
+
+              {abaAtiva === 'mensal' && (
+                <select 
+                  value={mes} onChange={(e) => setMes(e.target.value)}
+                  className="flex-1 xl:flex-none bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs md:text-sm font-semibold text-slate-700 focus:outline-none focus:border-lua-rose-dark cursor-pointer"
+                >
+                  <option value="01">Jan</option><option value="02">Fev</option><option value="03">Mar</option>
+                  <option value="04">Abr</option><option value="05">Mai</option><option value="06">Jun</option>
+                  <option value="07">Jul</option><option value="08">Ago</option><option value="09">Set</option>
+                  <option value="10">Out</option><option value="11">Nov</option><option value="12">Dez</option>
+                </select>
+              )}
+              <select 
+                value={ano} onChange={(e) => setAno(e.target.value)}
+                className="flex-1 xl:flex-none bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs md:text-sm font-semibold text-slate-700 focus:outline-none focus:border-lua-rose-dark cursor-pointer"
+              >
+                {Array.from({ length: 10 }, (_, i) => 2024 + i).map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* 🌟 GRÁFICOS DE DESEMPENHO DA EQUIPE 🌟 */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+            <div className="lg:col-span-2 bg-white border border-slate-200/70 rounded-2xl p-5 md:p-7 shadow-sm">
+              <div className="mb-4">
+                <h3 className="font-serif text-base md:text-lg font-bold text-slate-800">Ranking de Faturamento</h3>
+                <p className="text-xs md:text-sm text-slate-500">Comparativo de vendas por colaborador no período.</p>
+              </div>
+              <div className="h-64 w-full mt-4">
+                {carregando ? (
+                  <div className="h-full flex items-center justify-center"><span className="text-slate-400 text-sm">Calculando ranking...</span></div>
+                ) : !temVendasNaEquipe ? (
+                  <div className="h-full flex items-center justify-center border border-dashed border-slate-200 rounded-xl">
+                     <span className="text-slate-400 text-sm">Nenhuma venda registrada pela equipe neste período.</span>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={desempenhoEquipe} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="nome" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(val) => `R$ ${val/1000}k`} />
+                      <RechartsTooltip content={<CustomTooltipComissao />} cursor={{ fill: '#f8fafc' }} />
+                      <Bar dataKey="totalVendido" fill="#8b5a62" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200/70 rounded-2xl p-5 md:p-7 shadow-sm">
+              <div className="mb-4">
+                <h3 className="font-serif text-base md:text-lg font-bold text-slate-800">Participação (Share)</h3>
+                <p className="text-xs md:text-sm text-slate-500">Fatia de vendas por vendedor.</p>
+              </div>
+              <div className="h-56 w-full flex items-center justify-center relative">
+                {carregando ? (
+                  <span className="text-slate-400 text-sm">Carregando...</span>
+                ) : !temVendasNaEquipe ? (
+                  <span className="text-slate-400 text-sm">Gráfico indisponível.</span>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={desempenhoEquipe.filter(m => m.totalVendido > 0)} innerRadius={65} outerRadius={90} paddingAngle={4} dataKey="totalVendido" nameKey="nome">
+                        {desempenhoEquipe.map((entry, index) => <Cell key={`cell-${index}`} fill={CORES_GRAFICO[index % CORES_GRAFICO.length]} />)}
+                      </Pie>
+                      <RechartsTooltip content={<CustomTooltipRosca />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200/70 rounded-2xl shadow-sm overflow-hidden">
+            <div className="p-5 md:p-7 border-b border-slate-100 bg-slate-50/50">
+              <h2 className="text-lg md:text-xl font-bold text-slate-800">Tabela de Comissões</h2>
+              <p className="text-xs md:text-sm text-slate-500 mt-1">Extrato de repasse para cada membro ativo.</p>
             </div>
             
-            <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto items-end sm:items-center">
-               <div className="flex flex-col text-left">
-                  <label className="text-[10px] uppercase font-bold text-slate-400 mb-1">Taxa de Comissão (%)</label>
-                  <div className="relative">
-                    <input 
-                      type="number" 
-                      min="0" max="100" 
-                      value={taxaComissao} 
-                      onChange={(e) => setTaxaComissao(parseFloat(e.target.value) || 0)}
-                      className="w-24 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-lua-rose-dark outline-none focus:border-lua-rose-dark"
-                    />
-                    <span className="absolute right-3 top-2 text-sm font-bold text-slate-400">%</span>
-                  </div>
-               </div>
-
-               <div className="flex gap-2">
-                 <select 
-                   value={mes} onChange={(e) => setMes(e.target.value)}
-                   className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none cursor-pointer"
-                 >
-                   <option value="01">Jan</option><option value="02">Fev</option><option value="03">Mar</option>
-                   <option value="04">Abr</option><option value="05">Mai</option><option value="06">Jun</option>
-                   <option value="07">Jul</option><option value="08">Ago</option><option value="09">Set</option>
-                   <option value="10">Out</option><option value="11">Nov</option><option value="12">Dez</option>
-                 </select>
-                 <select 
-                   value={ano} onChange={(e) => setAno(e.target.value)}
-                   className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none cursor-pointer"
-                 >
-                   {Array.from({ length: 10 }, (_, i) => 2024 + i).map(a => <option key={a} value={a}>{a}</option>)}
-                 </select>
-               </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-slate-600 min-w-[700px]">
+                <thead>
+                  <tr className="bg-white border-b border-slate-200 text-slate-500 text-[11px] md:text-xs uppercase tracking-wider font-semibold">
+                    <th className="px-5 py-4">Colaborador</th>
+                    <th className="px-5 py-4 text-center">Nº de Vendas</th>
+                    <th className="px-5 py-4 text-right">Faturamento Total (R$)</th>
+                    <th className="px-5 py-4 text-right">Comissão Estimada (R$)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {carregando ? (
+                    <tr><td colSpan="4" className="p-12 text-center text-sm text-slate-400">Calculando resultados...</td></tr>
+                  ) : desempenhoEquipe.length === 0 ? (
+                    <tr><td colSpan="4" className="p-12 text-center text-sm text-slate-400">Nenhum membro na equipe registrado.</td></tr>
+                  ) : (
+                    desempenhoEquipe.map((membro) => (
+                      <tr key={membro.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-5 py-4">
+                          <div className="font-bold text-slate-800 text-sm">{membro.nome}</div>
+                          <div className="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">{membro.role === 'admin' ? 'Gestor' : 'Vendedor'}</div>
+                        </td>
+                        <td className="px-5 py-4 text-center">
+                          <span className="bg-slate-100 px-3 py-1 rounded-full text-xs font-bold text-slate-600">
+                            {membro.qtdVendas}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-right font-mono font-bold text-slate-800">
+                          R$ {membro.totalVendido.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-5 py-4 text-right font-mono font-bold text-emerald-600 bg-emerald-50/30">
+                          R$ {membro.comissao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-600 min-w-[700px]">
-              <thead>
-                <tr className="bg-white border-b border-slate-200 text-slate-500 text-[11px] md:text-xs uppercase tracking-wider font-semibold">
-                  <th className="px-5 py-4">Colaborador</th>
-                  <th className="px-5 py-4 text-center">Nº de Vendas</th>
-                  <th className="px-5 py-4 text-right">Faturamento Total (R$)</th>
-                  <th className="px-5 py-4 text-right">Comissão Estimada (R$)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {carregando ? (
-                  <tr><td colSpan="4" className="p-12 text-center text-sm text-slate-400">Calculando resultados...</td></tr>
-                ) : desempenhoEquipe.length === 0 ? (
-                  <tr><td colSpan="4" className="p-12 text-center text-sm text-slate-400">Nenhum membro na equipe registrado.</td></tr>
-                ) : (
-                  desempenhoEquipe.map((membro) => (
-                    <tr key={membro.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-5 py-4">
-                        <div className="font-bold text-slate-800 text-sm">{membro.nome}</div>
-                        <div className="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">{membro.role === 'admin' ? 'Gestor' : 'Vendedor'}</div>
-                      </td>
-                      <td className="px-5 py-4 text-center">
-                        <span className="bg-slate-100 px-3 py-1 rounded-full text-xs font-bold text-slate-600">
-                          {membro.qtdVendas}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-right font-mono font-bold text-slate-800">
-                        R$ {membro.totalVendido.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="px-5 py-4 text-right font-mono font-bold text-emerald-600 bg-emerald-50/30">
-                        R$ {membro.comissao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-          
-          <div className="p-4 bg-slate-50 border-t border-slate-100 text-[10px] text-slate-400 text-center">
-            * O cálculo de comissões leva em consideração apenas as vendas com o status <b>"✅ Pago"</b> no período selecionado. Vendas realizadas sem vendedor vinculado (clientes comprando sozinhos online pelo próprio login) não são contabilizadas.
+            
+            <div className="p-4 bg-slate-50 border-t border-slate-100 text-[10px] text-slate-400 text-center">
+              * O cálculo de comissões leva em consideração apenas as vendas com o status <b>"✅ Pago"</b> no período selecionado. Vendas realizadas sem vendedor vinculado (clientes comprando sozinhos online) não são contabilizadas na comissão da equipe.
+            </div>
           </div>
         </div>
       )}
