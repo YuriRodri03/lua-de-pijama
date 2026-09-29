@@ -200,31 +200,37 @@ export default function GestaoDespesas() {
             </div>
             
             <div className="p-5 flex-1 overflow-y-auto bg-slate-50/50">
-              <form onSubmit={handleSalvarCategoria} className="flex gap-2 mb-6">
+              {/* Formulário do Modal Ajustado para Mobile */}
+              <form onSubmit={handleSalvarCategoria} className="flex flex-col sm:flex-row gap-2 mb-6">
                 <input 
                   type="text" 
                   value={catNomeInput} 
                   onChange={(e) => setCatNomeInput(e.target.value)} 
                   placeholder="Nome (Ex: 🍔 Alimentação)"
-                  className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-lua-rose-dark shadow-sm"
+                  className="flex-1 w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-lua-rose-dark shadow-sm"
                   required
                 />
-                <button type="submit" disabled={salvandoCat} className="bg-slate-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-lua-rose-dark transition-colors shadow-sm disabled:opacity-70">
-                  {salvandoCat ? '...' : (catEditandoId ? 'Atualizar' : 'Adicionar')}
-                </button>
-                {catEditandoId && (
-                   <button type="button" onClick={() => {setCatEditandoId(null); setCatNomeInput('');}} className="text-xs font-bold text-slate-400 hover:text-slate-600 px-2">Cancelar</button>
-                )}
+                <div className="flex gap-2">
+                  <button type="submit" disabled={salvandoCat} className="flex-1 sm:flex-none bg-slate-800 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-lua-rose-dark transition-colors shadow-sm disabled:opacity-70 whitespace-nowrap">
+                    {salvandoCat ? '...' : (catEditandoId ? 'Atualizar' : 'Adicionar')}
+                  </button>
+                  {catEditandoId && (
+                     <button type="button" onClick={() => {setCatEditandoId(null); setCatNomeInput('');}} className="bg-slate-200 text-slate-600 px-3 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-300 transition-colors">
+                       ✕
+                     </button>
+                  )}
+                </div>
               </form>
 
               <div className="space-y-2">
                 <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Categorias Atuais</h4>
                 {categorias.map(cat => (
-                  <div key={cat.id} className={`flex justify-between items-center bg-white p-3 rounded-xl border transition-colors shadow-xs ${catEditandoId === cat.id ? 'border-lua-rose-dark ring-1 ring-lua-rose-dark/20' : 'border-slate-100 hover:border-slate-200'}`}>
-                    <span className="text-sm font-medium text-slate-700">{cat.nome}</span>
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => handleEditarCategoria(cat)} className="text-[10px] uppercase font-bold text-blue-500 hover:text-blue-700 bg-blue-50 px-2 py-1 rounded transition-colors">Editar</button>
-                      <button onClick={() => handleExcluirCategoria(cat.id)} className="text-[10px] uppercase font-bold text-rose-500 hover:text-rose-700 bg-rose-50 px-2 py-1 rounded transition-colors">Excluir</button>
+                  // Item da lista ajustado para não vazar
+                  <div key={cat.id} className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-xl border transition-colors shadow-xs ${catEditandoId === cat.id ? 'border-lua-rose-dark ring-1 ring-lua-rose-dark/20' : 'border-slate-100 hover:border-slate-200'}`}>
+                    <span className="text-sm font-medium text-slate-700 truncate w-full sm:w-auto">{cat.nome}</span>
+                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                      <button onClick={() => handleEditarCategoria(cat)} className="text-[10px] uppercase font-bold text-blue-500 hover:text-blue-700 bg-blue-50 px-3 py-1.5 rounded transition-colors whitespace-nowrap">Editar</button>
+                      <button onClick={() => handleExcluirCategoria(cat.id)} className="text-[10px] uppercase font-bold text-rose-500 hover:text-rose-700 bg-rose-50 px-3 py-1.5 rounded transition-colors whitespace-nowrap">Excluir</button>
                     </div>
                   </div>
                 ))}
@@ -315,7 +321,8 @@ export default function GestaoDespesas() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            {/* Grid ajustado para não quebrar no mobile */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-semibold uppercase text-slate-500 block mb-1.5">Valor (R$)</label>
                 <input 
@@ -341,16 +348,14 @@ export default function GestaoDespesas() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              
-              {/* 🌟 CAMPO DE CATEGORIA MELHORADO 🌟 */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-semibold uppercase text-slate-500 block mb-1.5">Categoria</label>
                 <div className="flex gap-2">
                   <select
                     value={categoria}
                     onChange={(e) => setCategoria(e.target.value)}
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark"
+                    className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark"
                     required
                   >
                     {categorias.length === 0 && <option value="">Carregando...</option>}
@@ -362,7 +367,7 @@ export default function GestaoDespesas() {
                     type="button" 
                     onClick={() => setModalCatAberto(true)} 
                     title="Gerenciar Categorias"
-                    className="bg-slate-50 border border-slate-200 hover:bg-slate-100 hover:border-slate-300 text-slate-600 px-3 rounded-xl transition-all flex items-center justify-center shadow-sm"
+                    className="bg-slate-50 border border-slate-200 hover:bg-slate-100 hover:border-slate-300 text-slate-600 px-3 rounded-xl transition-all flex items-center justify-center shadow-sm shrink-0"
                   >
                     ⚙️
                   </button>
