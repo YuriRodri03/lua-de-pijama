@@ -21,7 +21,6 @@ export default function Sacola({
         const { data: { session } } = await supabase.auth.getSession();
         
         if (session?.user) {
-          // Busca o cliente usando o auth_user_id
           const { data: cliente } = await supabase
             .from('clientes')
             .select('nome, whatsapp')
@@ -31,12 +30,8 @@ export default function Sacola({
           if (cliente) {
             const nomePadrao = cliente.nome || session.user.user_metadata?.full_name || '';
             setClienteNome(nomePadrao);
-            
-            if (cliente.whatsapp) {
-              setClienteTelefone(cliente.whatsapp);
-            }
+            if (cliente.whatsapp) setClienteTelefone(cliente.whatsapp);
           } else {
-            // Se não tem cadastro de cliente ainda, tenta pegar o nome do Google/Email
             setClienteNome(session.user.user_metadata?.full_name || '');
           }
         }
@@ -46,7 +41,6 @@ export default function Sacola({
         setCarregandoDados(false);
       }
     }
-
     carregarDadosDoUsuario();
   }, []);
 
@@ -69,7 +63,7 @@ export default function Sacola({
     setGerandoPagamento(true);
 
     try {
-      // 1. ATUALIZAR OU CRIAR O CADASTRO NA TABELA CLIENTES
+      // 1. ATUALIZAR OU CRIAR O CADASTRO DO CLIENTE
       const { data: clienteExistente } = await supabase
         .from('clientes')
         .select('id')
@@ -77,29 +71,25 @@ export default function Sacola({
         .maybeSingle();
 
       if (clienteExistente) {
-        // Se já existe, atualiza caso ele tenha digitado um whatsapp novo
         await supabase
           .from('clientes')
-          .update({ 
-            nome: clienteNome,
-            whatsapp: clienteTelefone 
-          })
+          .update({ nome: clienteNome, whatsapp: clienteTelefone })
           .eq('id', clienteExistente.id);
       } else {
-        // Se é a primeira vez, insere o cliente no banco
         await supabase
           .from('clientes')
-          .insert([{
-            auth_user_id: session.user.id,
-            nome: clienteNome,
-            whatsapp: clienteTelefone
-          }]);
+          .insert([{ auth_user_id: session.user.id, nome: clienteNome, whatsapp: clienteTelefone }]);
       }
+
+      // 🌟 GERA O CÓDIGO DO PEDIDO: Letras e números fáceis de ler (Ex: PED-4X9K2D)
+      const stringHex = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const codigoPedido = `PED-${stringHex}`;
 
       // 2. CRIAR A VENDA
       const { data: novaVenda, error: erroVenda } = await supabase
         .from('vendas')
         .insert([{
+          codigo_pedido: codigoPedido, // 🌟 SALVA O CÓDIGO NOVO AQUI
           status_pagamento: 'pendente',
           total: valorTotalSacola,
           tipo_venda: 'online',
@@ -113,24 +103,40 @@ export default function Sacola({
 
       if (erroVenda) throw erroVenda;
 
-      // 3. DAR BAIXA NO ESTOQUE
-      const promessasEstoque = carrinho.map(async (item) => {
+      // 3. DAR BAIXA NO ESTOQUE DE VARIAÇÕES (Lógica atualizada para a coluna JSONB)
+      const promessasEstoque = carrinho.map(async (itemComprado) => {
+        // Busca as variações do produto base no banco
         const { data: produtoNoBanco, error: erroBusca } = await supabase
           .from('produtos')
-          .select('quantidade_estoque')
-          .eq('id', item.id)
+          .select('variacoes')
+          .eq('id', itemComprado.id_base) // Pega o ID base que mandamos da loja
           .single();
 
-        if (erroBusca) throw erroBusca;
+        if (erroBusca || !produtoNoBanco?.variacoes) return;
 
-        const novoEstoque = Math.max(0, (produtoNoBanco.quantidade_estoque || 0) - item.quantidade);
+        // Converte as variações do banco
+        let varsNoBanco = typeof produtoNoBanco.variacoes === 'string' 
+           ? JSON.parse(produtoNoBanco.variacoes) 
+           : produtoNoBanco.variacoes;
 
-        const { error: erroUpdate } = await supabase
+        // Encontra a variação que o cliente escolheu pegando pelo nome que formatamos (ex: "Pijama | Rosé - P")
+        const nomeCorETamanho = itemComprado.nome.split('| ')[1]; // "Rosé - P"
+        if (!nomeCorETamanho) return;
+        const [corComprada, tamanhoComprado] = nomeCorETamanho.split(' - ');
+
+        // Atualiza a quantidade apenas da variação certa
+        const novasVariacoes = varsNoBanco.map(v => {
+          if (v.cor === corComprada && v.tamanho === tamanhoComprado) {
+             return { ...v, quantidade: Math.max(0, v.quantidade - itemComprado.quantidade) };
+          }
+          return v;
+        });
+
+        // Salva as variações subtraídas de volta no banco
+        await supabase
           .from('produtos')
-          .update({ quantidade_estoque: novoEstoque })
-          .eq('id', item.id);
-
-        if (erroUpdate) throw erroUpdate;
+          .update({ variacoes: novasVariacoes })
+          .eq('id', itemComprado.id_base);
       });
 
       await Promise.all(promessasEstoque);
@@ -184,7 +190,7 @@ export default function Sacola({
               <div key={item.id} className="flex items-center justify-between py-4 gap-3 md:gap-4">
                 <div className="flex items-center gap-3 md:gap-4 flex-1 min-w-0">
                   {item.foto_url ? (
-                    <img src={`${item.foto_url}?t=${Date.now()}`} alt={item.nome} className="w-14 h-14 md:w-16 md:h-16 object-cover rounded-xl bg-lua-cream shrink-0" />
+                    <img src={item.foto_url} alt={item.nome} className="w-14 h-14 md:w-16 md:h-16 object-cover rounded-xl bg-lua-cream shrink-0" />
                   ) : (
                     <div className="w-14 h-14 md:w-16 md:h-16 bg-lua-cream rounded-xl flex items-center justify-center text-xl select-none shrink-0">✨</div>
                   )}
@@ -262,7 +268,7 @@ export default function Sacola({
             <button 
               onClick={handleFinalizarCompra} 
               disabled={gerandoPagamento || carregandoDados}
-              className="w-full flex-1 bg-lua-rose-dark hover:bg-lua-rose text-white text-xs md:text-sm font-bold py-3 rounded-xl shadow-xs transition-colors disabled:opacity-60"
+              className="w-full flex-1 bg-slate-900 hover:bg-lua-rose-dark text-white text-xs md:text-sm font-bold uppercase tracking-widest py-3 rounded-xl shadow-xs transition-colors disabled:opacity-60"
             >
               {gerandoPagamento ? 'Gerando Link Seguro...' : 'Ir para Pagamento 🔒'}
             </button>

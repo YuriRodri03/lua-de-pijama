@@ -7,6 +7,10 @@ export default function Estoque() {
   const [itens, setItens] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
+  const [editandoId, setEditandoId] = useState(null);
+  
+  // NOVO ESTADO: Controle de Abas
+  const [abaAtual, setAbaAtual] = useState('catalogo'); 
   
   // -------------------------------------------------------------------
   // ESTADOS DO FORMULÁRIO (PRODUTO BASE)
@@ -14,16 +18,23 @@ export default function Estoque() {
   const [nome, setNome] = useState('');
   const [precoVarejo, setPrecoVarejo] = useState('');
   const [precoAtacado, setPrecoAtacado] = useState('');
-  const [fotoArquivo, setFotoArquivo] = useState(null);
+  const [fotosArquivos, setFotosArquivos] = useState([]); 
+  const [fotosExistentes, setFotosExistentes] = useState([]); // <-- NOVO: Guarda as fotos que já estão no banco
   const [tag, setTag] = useState('Novidade');
 
   // -------------------------------------------------------------------
-  // ESTADOS DO GERENCIADOR DE VARIAÇÕES (COR, TAMANHO, QTD)
+  // ESTADOS DA GRADE DE VARIAÇÕES (COR, TAMANHO, QTD, ACRÉSCIMO)
   // -------------------------------------------------------------------
   const [variacoesInput, setVariacoesInput] = useState([]);
   const [novaCor, setNovaCor] = useState('');
-  const [novoTamanho, setNovoTamanho] = useState('M');
-  const [novaQtd, setNovaQtd] = useState('');
+  
+  const [grade, setGrade] = useState({
+    PP: { qtd: '', acrescimo: '' },
+    P:  { qtd: '', acrescimo: '' },
+    M:  { qtd: '', acrescimo: '' },
+    G:  { qtd: '', acrescimo: '' },
+    GG: { qtd: '', acrescimo: '' }
+  });
 
   // 1. BUSCAR PRODUTOS DO BANCO DE DADOS
   async function buscarEstoque() {
@@ -48,33 +59,126 @@ export default function Estoque() {
     buscarEstoque();
   }, []);
 
-  // GERENCIAR LISTA DE VARIAÇÕES (Localmente, antes de enviar pro banco)
-  const adicionarVariacao = () => {
-    if (!novaCor.trim() || !novoTamanho || !novaQtd) {
-      alert("Preencha Cor, Tamanho e Quantidade para adicionar a variação.");
+  const handleGradeChange = (tamanho, campo, valor) => {
+    setGrade(prev => ({
+      ...prev,
+      [tamanho]: { ...prev[tamanho], [campo]: valor }
+    }));
+  };
+
+  const adicionarGradeDaCor = () => {
+    if (!novaCor.trim()) {
+      alert("Por favor, digite o nome da cor para adicionar a grade.");
       return;
     }
 
-    setVariacoesInput([
-      ...variacoesInput,
-      { 
-        id_local: Date.now().toString(), // ID temporário pro React listar certinho
-        cor: novaCor.trim(), 
-        tamanho: novoTamanho, 
-        quantidade: parseInt(novaQtd, 10) || 0 
-      }
-    ]);
+    let adicionouAlgo = false;
+    const novasVariacoes = [];
 
-    // Limpa os campos de variação para facilitar a próxima adição
+    Object.entries(grade).forEach(([tamanho, dados]) => {
+      const qtd = parseInt(dados.qtd, 10);
+      if (qtd > 0) {
+        novasVariacoes.push({
+          id_local: Date.now().toString() + Math.random().toString(),
+          cor: novaCor.trim(),
+          tamanho: tamanho,
+          quantidade: qtd,
+          preco_adicional: parseFloat(dados.acrescimo) || 0
+        });
+        adicionouAlgo = true;
+      }
+    });
+
+    if (!adicionouAlgo) {
+      alert("Preencha a quantidade de pelo menos um tamanho para adicionar esta cor.");
+      return;
+    }
+
+    setVariacoesInput([...variacoesInput, ...novasVariacoes]);
     setNovaCor('');
-    setNovaQtd('');
+    setGrade({
+      PP: { qtd: '', acrescimo: '' },
+      P:  { qtd: '', acrescimo: '' },
+      M:  { qtd: '', acrescimo: '' },
+      G:  { qtd: '', acrescimo: '' },
+      GG: { qtd: '', acrescimo: '' }
+    });
   };
 
   const removerVariacao = (idLocalToRemove) => {
     setVariacoesInput(variacoesInput.filter(v => v.id_local !== idLocalToRemove));
   };
 
-  // 2. SALVAR TUDO NO BANCO DE DADOS (Produto Base + Array de Variações JSONB)
+  // 🌟 PREENCHER FORMULÁRIO PARA EDIÇÃO (Agora puxa as fotos!)
+  const iniciarEdicao = (produto) => {
+    setEditandoId(produto.id);
+    setNome(produto.nome);
+    setPrecoVarejo(produto.preco_varejo || '');
+    setPrecoAtacado(produto.preco_atacado || '');
+    setTag(produto.tag || '');
+    
+    // Puxando variações
+    try {
+      const varsArray = typeof produto.variacoes === 'string' ? JSON.parse(produto.variacoes) : (produto.variacoes || []);
+      const varsComId = varsArray.map(v => ({ ...v, id_local: Math.random().toString() }));
+      setVariacoesInput(varsComId);
+    } catch (e) {
+      setVariacoesInput([]);
+    }
+
+    // Puxando fotos salvas
+    if (produto.foto_url) {
+      try {
+        const fotosParsed = JSON.parse(produto.foto_url);
+        if (Array.isArray(fotosParsed)) {
+          setFotosExistentes(fotosParsed);
+        } else {
+          setFotosExistentes([produto.foto_url]);
+        }
+      } catch (e) {
+        setFotosExistentes([produto.foto_url]); // Se for uma string normal
+      }
+    } else {
+      setFotosExistentes([]);
+    }
+    
+    setFotosArquivos([]);
+    if(document.getElementById('input-foto')) document.getElementById('input-foto').value = '';
+    
+    setAbaAtual('cadastro');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelarEdicao = () => {
+    setEditandoId(null);
+    setNome('');
+    setPrecoVarejo('');
+    setPrecoAtacado('');
+    setTag('Novidade');
+    setVariacoesInput([]);
+    setFotosExistentes([]);
+    setFotosArquivos([]);
+    if(document.getElementById('input-foto')) document.getElementById('input-foto').value = '';
+    
+    setAbaAtual('catalogo');
+  };
+
+  // 🌟 GERENCIAMENTO DE FOTOS EXISTENTES 🌟
+  const removerFotoExistente = (index) => {
+    const novasFotos = [...fotosExistentes];
+    novasFotos.splice(index, 1);
+    setFotosExistentes(novasFotos);
+  };
+
+  const tornarCapa = (index) => {
+    if (index === 0) return; // Já é a capa
+    const novasFotos = [...fotosExistentes];
+    const [fotoMovida] = novasFotos.splice(index, 1);
+    novasFotos.unshift(fotoMovida); // Coloca na primeira posição
+    setFotosExistentes(novasFotos);
+  };
+
+  // 2. SALVAR TUDO NO BANCO DE DADOS
   const handleCadastrar = async (e) => {
     e.preventDefault();
 
@@ -84,88 +188,92 @@ export default function Estoque() {
     }
 
     setSalvando(true);
-    let urlImagemFinal = null;
+    let urlsImagensFinais = [];
 
     try {
-      // Faz o upload da foto se existir
-      if (fotoArquivo) {
-        const extensao = fotoArquivo.name.split('.').pop();
-        const nomeArquivo = `${Date.now()}.${extensao}`;
-        const caminhoArquivo = `produtos/${nomeArquivo}`;
+      // 1. Upload de novas fotos
+      if (fotosArquivos && fotosArquivos.length > 0) {
+        for (let i = 0; i < fotosArquivos.length; i++) {
+          const file = fotosArquivos[i];
+          const extensao = file.name.split('.').pop();
+          const nomeArquivo = `${Date.now()}_${i}.${extensao}`;
+          const caminhoArquivo = `produtos/${nomeArquivo}`;
 
-        const { error: uploadError } = await supabase.storage
-          .from('produtos')
-          .upload(caminhoArquivo, fotoArquivo);
+          const { error: uploadError } = await supabase.storage
+            .from('produtos')
+            .upload(caminhoArquivo, file);
 
-        if (uploadError) throw uploadError;
+          if (uploadError) throw uploadError;
 
-        const { data: linkData } = supabase.storage
-          .from('produtos')
-          .getPublicUrl(caminhoArquivo);
+          const { data: linkData } = supabase.storage
+            .from('produtos')
+            .getPublicUrl(caminhoArquivo);
 
-        urlImagemFinal = linkData.publicUrl;
+          urlsImagensFinais.push(linkData.publicUrl);
+        }
       }
 
-      // Prepara o array de variações limpando o ID temporário
-      const variacoesLimpasParaOBanco = variacoesInput.map(({ cor, tamanho, quantidade }) => ({
-        cor, tamanho, quantidade
+      // 2. Mescla fotos antigas mantidas com as novas que foram subidas
+      const todasAsFotos = [...fotosExistentes, ...urlsImagensFinais];
+      let valorFinalFotoUrl = null;
+      
+      if (todasAsFotos.length === 1) {
+        valorFinalFotoUrl = todasAsFotos[0];
+      } else if (todasAsFotos.length > 1) {
+        valorFinalFotoUrl = JSON.stringify(todasAsFotos);
+      }
+
+      const variacoesLimpasParaOBanco = variacoesInput.map(({ cor, tamanho, quantidade, preco_adicional }) => ({
+        cor, tamanho, quantidade, preco_adicional
       }));
 
-      // Monta o objeto final do produto
-      const novoProduto = {
+      const dadosProduto = {
         nome,
         preco_varejo: parseFloat(precoVarejo) || 0,
         preco_atacado: parseFloat(precoAtacado) || 0,
-        foto_url: urlImagemFinal,
         tag,
-        variacoes: variacoesLimpasParaOBanco // Salvando tudo na coluna JSONB
+        variacoes: variacoesLimpasParaOBanco,
+        foto_url: valorFinalFotoUrl
       };
 
-      // Envia pro Supabase
-      const { data, error } = await supabase
-        .from('produtos')
-        .insert([novoProduto])
-        .select();
+      if (editandoId) {
+          const { error } = await supabase
+            .from('produtos')
+            .update(dadosProduto)
+            .eq('id', editandoId);
+            
+          if (error) throw error;
+          alert('Produto atualizado com sucesso!');
+      } else {
+          const { data, error } = await supabase
+            .from('produtos')
+            .insert([dadosProduto])
+            .select();
 
-      if (error) throw error;
-
-      if (data) {
-        // Atualiza a tela instantaneamente
-        setItens([data[0], ...itens]);
-        
-        // Reseta o formulário
-        setNome('');
-        setPrecoVarejo('');
-        setPrecoAtacado('');
-        setTag('Novidade');
-        setVariacoesInput([]);
-        setFotoArquivo(null);
-        document.getElementById('input-foto').value = '';
-        
-        alert('Produto com variações registrado sucesso!');
+          if (error) throw error;
+          if (data) {
+             alert('Produto registrado com sucesso!');
+          }
       }
+
+      buscarEstoque();
+      cancelarEdicao();
+
     } catch (error) {
-      console.error('Erro ao cadastrar produto:', error.message);
+      console.error('Erro ao salvar produto:', error.message);
       alert('Erro ao salvar o produto no banco de dados.');
     } finally {
       setSalvando(false);
     }
   };
 
-  // 3. DELETAR PRODUTO E SUAS VARIAÇÕES (Também apaga a foto do Storage)
   const handleDeletar = async (id) => {
     if (confirm("Tem certeza que deseja remover este produto e TODAS as suas variações?")) {
       try {
         const produto = itens.find(item => item.id === id);
 
-        if (produto && produto.foto_url) {
-          const urlSemFiltro = produto.foto_url.split('?')[0]; 
-          const caminhoDoArquivo = urlSemFiltro.split('/public/produtos/')[1];
-          if (caminhoDoArquivo) {
-            await supabase.storage.from('produtos').remove([caminhoDoArquivo]);
-          }
-        }
-
+        // Se quiser deletar as imagens físicas do Storage, teria que iterar o JSON.
+        // Simplificado: Apaga o registro do banco.
         const { error } = await supabase.from('produtos').delete().eq('id', id);
         if (error) throw error;
         
@@ -176,222 +284,310 @@ export default function Estoque() {
     }
   };
 
-  // 4. CÁLCULO DE MÉTRICAS (Lendo dentro do JSONB)
+  // Funções Utilitárias
   const calcularTotalEstoqueProduto = (variacoes) => {
     if (!variacoes) return 0;
-    // Garante que é um array para evitar erros
     const arr = typeof variacoes === 'string' ? JSON.parse(variacoes) : variacoes;
     if (!Array.isArray(arr)) return 0;
-    
     return arr.reduce((acc, v) => acc + (v.quantidade || 0), 0);
+  };
+
+  const getPrimeiraFoto = (fotoString) => {
+    if (!fotoString) return null;
+    try {
+      const parsed = JSON.parse(fotoString);
+      if (Array.isArray(parsed)) return parsed[0];
+    } catch(e) {}
+    return fotoString; 
   };
 
   const totalPecas = itens.reduce((acc, curr) => acc + calcularTotalEstoqueProduto(curr.variacoes), 0);
   const custoPatrimonial = itens.reduce((acc, curr) => acc + ((curr.preco_varejo || 0) * calcularTotalEstoqueProduto(curr.variacoes)), 0);
 
   return (
-    <div className="space-y-6 md:space-y-8 pb-16 animate-fade-in">
+    <div className="pb-16 animate-fade-in">
       
-      {/* ----------------- CARDS DE RESUMO ----------------- */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
-        <StatCard 
-          label="Total de Peças" 
-          value={carregando ? "..." : `${totalPecas} unidades`}
-          statusText="Em todas as variações"
-          statusType="neutral"
-        />
-        <StatCard 
-          label="Valor de Venda" 
-          value={carregando ? "..." : `R$ ${custoPatrimonial.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-          statusText="Patrimônio ativo (Varejo)"
-          statusType="gold"
-        />
-        <StatCard 
-          label="Produtos Únicos" 
-          value={carregando ? "..." : `${itens.length} Modelos`}
-          statusText="Agrupando variações"
-          statusType="alert"
-        />
+      {/* ----------------- NAVEGAÇÃO DE ABAS ----------------- */}
+      <div className="flex gap-6 border-b border-slate-200 mb-6 md:mb-8">
+        <button
+          onClick={() => { setAbaAtual('catalogo'); cancelarEdicao(); }}
+          className={`pb-3 text-sm md:text-base font-bold transition-all duration-300 relative ${
+            abaAtual === 'catalogo' ? 'text-lua-rose-dark' : 'text-slate-400 hover:text-slate-700'
+          }`}
+        >
+          Catálogo e Estoque
+          {abaAtual === 'catalogo' && (
+             <span className="absolute bottom-0 left-0 w-full h-0.5 bg-lua-rose-dark rounded-t-full"></span>
+          )}
+        </button>
+        <button
+          onClick={() => setAbaAtual('cadastro')}
+          className={`pb-3 text-sm md:text-base font-bold transition-all duration-300 relative ${
+            abaAtual === 'cadastro' ? 'text-lua-rose-dark' : 'text-slate-400 hover:text-slate-700'
+          }`}
+        >
+          {editandoId ? 'Editar Produto' : 'Cadastrar Novo Produto'}
+          {abaAtual === 'cadastro' && (
+             <span className="absolute bottom-0 left-0 w-full h-0.5 bg-lua-rose-dark rounded-t-full"></span>
+          )}
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
-        
-        {/* ----------------- FORMULÁRIO DE CADASTRO ----------------- */}
-        <div className="bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs h-fit">
-          <h3 className="font-serif text-lg md:text-xl font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4">
-            Registrar Novo Produto
-          </h3>
+      {/* ================================================================= */}
+      {/* ABA: CATÁLOGO */}
+      {/* ================================================================= */}
+      {abaAtual === 'catalogo' && (
+        <div className="space-y-6 md:space-y-8 animate-fade-in">
           
-          <form onSubmit={handleCadastrar} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
+            <StatCard label="Total de Peças" value={carregando ? "..." : `${totalPecas} unidades`} statusText="Em todas as variações" statusType="neutral"/>
+            <StatCard label="Valor de Venda" value={carregando ? "..." : `R$ ${custoPatrimonial.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} statusText="Patrimônio ativo (Varejo)" statusType="gold"/>
+            <StatCard label="Produtos Únicos" value={carregando ? "..." : `${itens.length} Modelos`} statusText="Agrupando variações" statusType="alert"/>
+          </div>
+
+          <div className="bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-serif text-lg md:text-xl font-bold text-slate-800">Catálogo Cadastrado</h3>
+              <Button variant="primary" onClick={() => setAbaAtual('cadastro')} className="text-xs py-2 px-4 shadow-sm">
+                + Novo Produto
+              </Button>
+            </div>
             
-            {/* DADOS GERAIS DO PRODUTO BASE */}
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
-              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-2">
-                <span>📦</span> Dados Base
-              </h4>
-              
-              <div>
-                <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Nome do Modelo</label>
-                <input type="text" placeholder="ex: Pijama Americano Satin" value={nome} onChange={(e) => setNome(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark transition-colors" required />
-              </div>
+            <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0 pb-2">
+              <table className="w-full text-left text-sm text-slate-600 min-w-[700px]">
+                <thead>
+                  <tr className="bg-lua-cream border-b border-lua-rose-dark/10 text-slate-500 text-xs uppercase whitespace-nowrap">
+                    <th className="p-3 rounded-tl-lg">Produto Base</th>
+                    <th className="p-3">Preços (Varejo / Atacado)</th>
+                    <th className="p-3">Variações e Estoque</th>
+                    <th className="p-3 text-right rounded-tr-lg">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {carregando ? (
+                    <tr><td colSpan="4" className="p-8 text-center text-sm text-slate-400">Buscando catálogo no banco de dados...</td></tr>
+                  ) : itens.length === 0 ? (
+                    <tr>
+                      <td colSpan="4" className="p-12 text-center">
+                        <span className="text-4xl block mb-3">📦</span>
+                        <p className="text-sm text-slate-500 font-medium mb-3">Nenhum produto cadastrado no momento.</p>
+                        <Button variant="outline" onClick={() => setAbaAtual('cadastro')}>Cadastrar o primeiro</Button>
+                      </td>
+                    </tr>
+                  ) : (
+                    itens.map((item) => {
+                      let variacoesDoItem = [];
+                      try {
+                         variacoesDoItem = typeof item.variacoes === 'string' ? JSON.parse(item.variacoes) : (item.variacoes || []);
+                      } catch(e) {}
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Preço Varejo (R$)</label>
-                  <input type="number" step="0.01" placeholder="0.00" value={precoVarejo} onChange={(e) => setPrecoVarejo(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark transition-colors" required />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Preço Atacado (R$)</label>
-                  <input type="number" step="0.01" placeholder="0.00" value={precoAtacado} onChange={(e) => setPrecoAtacado(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark transition-colors" required />
-                </div>
-              </div>
+                      const fotoCapa = getPrimeiraFoto(item.foto_url);
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Tag Vitrine</label>
-                  <input type="text" placeholder="ex: Novo" value={tag} onChange={(e) => setTag(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark transition-colors" />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Foto Principal</label>
-                  <input id="input-foto" type="file" accept="image/*" onChange={(e) => setFotoArquivo(e.target.files[0])} className="w-full text-xs mt-1" />
-                </div>
-              </div>
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-50/50 transition-colors align-top group">
+                          <td className="p-4 flex gap-3">
+                            {fotoCapa ? (
+                              <img src={fotoCapa} alt={item.nome} className="w-14 h-14 rounded-lg object-cover border border-slate-200 shadow-sm shrink-0" />
+                            ) : (
+                              <div className="w-14 h-14 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400 text-2xl">📸</div>
+                            )}
+                            <div className="flex flex-col justify-center">
+                              <span className="font-serif font-semibold text-slate-800 block text-sm leading-tight max-w-[200px] mb-1">{item.nome}</span>
+                              <span className="text-[11px] text-slate-500 font-medium bg-slate-100 px-2 py-0.5 rounded-full w-fit">Estoque: <b className="text-slate-700">{calcularTotalEstoqueProduto(variacoesDoItem)}</b> un</span>
+                            </div>
+                          </td>
+                          
+                          <td className="p-4 text-xs whitespace-nowrap align-middle">
+                             <div className="font-bold text-slate-800 text-sm">R$ {Number(item.preco_varejo).toFixed(2)}</div>
+                             <div className="text-slate-400 font-medium mt-0.5">R$ {Number(item.preco_atacado).toFixed(2)}</div>
+                          </td>
+                          
+                          <td className="p-4 align-middle">
+                             <div className="flex flex-wrap gap-1.5 max-w-[350px]">
+                               {variacoesDoItem.length === 0 ? <span className="text-[10px] text-rose-400 italic bg-rose-50 px-2 py-1 rounded">Sem variações</span> : null}
+                               
+                               {variacoesDoItem.map((v, i) => (
+                                 <span key={i} className={`text-[10px] px-2 py-1.5 rounded-md border flex items-center gap-1.5 shadow-xs ${
+                                   v.quantidade <= 2 ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-white border-slate-200 text-slate-700'
+                                 }`}>
+                                   <span className="font-medium">{v.cor}</span> 
+                                   <span className="font-bold border-l border-slate-300/50 pl-1">{v.tamanho}</span>
+                                   <span className={`ml-0.5 px-1.5 py-0.5 rounded ${v.quantidade <= 2 ? 'bg-rose-200 text-rose-900' : 'bg-slate-100'}`}>{v.quantidade}</span>
+                                 </span>
+                               ))}
+                             </div>
+                          </td>
+                          
+                          <td className="p-4 text-right whitespace-nowrap align-middle">
+                             <div className="flex justify-end gap-2">
+                                <button onClick={() => iniciarEdicao(item)} className="text-xs text-blue-600 hover:text-white font-medium bg-blue-50 hover:bg-blue-600 px-3 py-2 rounded-lg transition-all border border-blue-100 hover:border-blue-600 shadow-sm">
+                                  Editar
+                                </button>
+                                <button onClick={() => handleDeletar(item.id)} className="text-xs text-rose-500 hover:text-white font-medium bg-rose-50 hover:bg-rose-500 px-3 py-2 rounded-lg transition-all border border-rose-100 hover:border-rose-500 shadow-sm">
+                                  Excluir
+                                </button>
+                             </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
-
-            {/* GERENCIADOR DE VARIAÇÕES (COR E TAMANHO) */}
-            <div className="p-4 border border-lua-rose-dark/30 bg-lua-rose-light/10 rounded-xl space-y-4">
-              <h4 className="text-xs font-bold text-lua-rose-dark uppercase tracking-wider mb-2 flex items-center gap-2">
-                <span>✨</span> Variações e Estoque
-              </h4>
-              
-              {/* Inputs para nova variação */}
-              <div className="flex gap-2 items-end">
-                <div className="flex-1">
-                  <label className="text-[10px] font-semibold text-slate-500 block mb-1">Cor</label>
-                  <input type="text" placeholder="ex: Rosé" value={novaCor} onChange={(e) => setNovaCor(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-lua-rose-dark" />
-                </div>
-                <div className="w-20">
-                  <label className="text-[10px] font-semibold text-slate-500 block mb-1">Tam</label>
-                  <select value={novoTamanho} onChange={(e) => setNovoTamanho(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-lua-rose-dark">
-                    <option value="P">P</option>
-                    <option value="M">M</option>
-                    <option value="G">G</option>
-                    <option value="GG">GG</option>
-                  </select>
-                </div>
-                <div className="w-20">
-                  <label className="text-[10px] font-semibold text-slate-500 block mb-1">Qtd</label>
-                  <input type="number" placeholder="0" value={novaQtd} onChange={(e) => setNovaQtd(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-lua-rose-dark" />
-                </div>
-                <button type="button" onClick={adicionarVariacao} className="bg-lua-rose-dark text-white h-[38px] px-4 rounded-lg text-lg font-bold hover:bg-lua-rose transition-colors shadow-sm">+</button>
-              </div>
-
-              {/* Lista das variações adicionadas */}
-              {variacoesInput.length > 0 && (
-                <div className="mt-4 space-y-2 max-h-40 overflow-y-auto pr-1 no-scrollbar">
-                  {variacoesInput.map((v) => (
-                    <div key={v.id_local} className="flex justify-between items-center bg-white px-3 py-2 rounded-lg border border-slate-200 text-sm shadow-xs">
-                      <span className="font-medium text-slate-700">
-                        {v.cor} <span className="text-slate-400 mx-1">•</span> Tam {v.tamanho}
-                      </span>
-                      <div className="flex items-center gap-3">
-                        <span className="bg-slate-50 border border-slate-100 px-2 py-0.5 rounded text-xs font-bold text-slate-600">{v.quantidade} un</span>
-                        <button type="button" onClick={() => removerVariacao(v.id_local)} className="text-rose-400 hover:text-rose-600 bg-rose-50 hover:bg-rose-100 w-6 h-6 rounded-md flex items-center justify-center transition-colors">✕</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <Button variant="primary" type="submit" disabled={salvando} className="w-full mt-4 py-3 disabled:opacity-70 text-sm">
-              {salvando ? '⏳ Salvando produto e variações...' : 'Cadastrar Produto Completo'}
-            </Button>
-          </form>
-        </div>
-
-        {/* ----------------- LISTAGEM DO ESTOQUE ----------------- */}
-        <div className="lg:col-span-2 bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs">
-          <h3 className="font-serif text-lg md:text-xl font-bold text-slate-800 mb-4">Catálogo e Variações</h3>
-          
-          <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0 pb-2">
-            <table className="w-full text-left text-sm text-slate-600 min-w-[700px]">
-              <thead>
-                <tr className="bg-lua-cream border-b border-lua-rose-dark/10 text-slate-500 text-xs uppercase whitespace-nowrap">
-                  <th className="p-3 rounded-tl-lg">Produto Base</th>
-                  <th className="p-3">Preços (Varejo / Atacado)</th>
-                  <th className="p-3">Variações e Estoque</th>
-                  <th className="p-3 text-right rounded-tr-lg">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {carregando ? (
-                  <tr><td colSpan="4" className="p-8 text-center text-sm text-slate-400">Buscando catálogo no banco de dados...</td></tr>
-                ) : itens.length === 0 ? (
-                  <tr><td colSpan="4" className="p-8 text-center text-sm text-slate-400">Nenhum produto cadastrado no momento.</td></tr>
-                ) : (
-                  itens.map((item) => {
-                    // Proteção para ler o JSONB corretamente
-                    let variacoesDoItem = [];
-                    try {
-                       variacoesDoItem = typeof item.variacoes === 'string' ? JSON.parse(item.variacoes) : (item.variacoes || []);
-                    } catch(e) { console.error(e) }
-
-                    return (
-                      <tr key={item.id} className="hover:bg-slate-50/50 transition-colors align-top group">
-                        
-                        {/* COLUNA: FOTO E NOME */}
-                        <td className="p-3 flex gap-3">
-                          {item.foto_url ? (
-                            <img src={item.foto_url} alt={item.nome} className="w-12 h-12 rounded-lg object-cover border border-slate-200 shadow-sm shrink-0" />
-                          ) : (
-                            <div className="w-12 h-12 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400 text-xl">📦</div>
-                          )}
-                          <div className="flex flex-col justify-center">
-                            <span className="font-serif font-semibold text-slate-800 block text-sm leading-tight max-w-[180px]">{item.nome}</span>
-                            <span className="text-xs text-slate-500 font-medium mt-1">Estoque Total: <b className="text-slate-700">{calcularTotalEstoqueProduto(variacoesDoItem)}</b></span>
-                          </div>
-                        </td>
-                        
-                        {/* COLUNA: PREÇOS */}
-                        <td className="p-3 text-xs whitespace-nowrap align-middle">
-                           <div className="font-bold text-slate-800 text-sm">R$ {Number(item.preco_varejo).toFixed(2)}</div>
-                           <div className="text-slate-400 font-medium mt-0.5">R$ {Number(item.preco_atacado).toFixed(2)}</div>
-                        </td>
-                        
-                        {/* COLUNA: CHIPS DE VARIAÇÕES */}
-                        <td className="p-3 align-middle">
-                           <div className="flex flex-wrap gap-1.5">
-                             {variacoesDoItem.length === 0 ? <span className="text-[10px] text-rose-400 italic bg-rose-50 px-2 py-1 rounded">Sem variações cadastradas</span> : null}
-                             
-                             {variacoesDoItem.map((v, i) => (
-                               <span key={i} className={`text-[10px] px-2 py-1 rounded-md border flex items-center gap-1.5 shadow-xs ${
-                                 v.quantidade <= 2 ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-white border-slate-200 text-slate-700'
-                               }`}>
-                                 <span className="font-medium">{v.cor}</span> 
-                                 <span className="font-bold border-l border-slate-300/50 pl-1">{v.tamanho}</span>
-                                 <span className={`ml-0.5 px-1.5 rounded-sm ${v.quantidade <= 2 ? 'bg-rose-200 text-rose-900' : 'bg-slate-100'}`}>{v.quantidade}</span>
-                               </span>
-                             ))}
-                           </div>
-                        </td>
-                        
-                        {/* COLUNA: AÇÕES */}
-                        <td className="p-3 text-right whitespace-nowrap align-middle">
-                          <button onClick={() => handleDeletar(item.id)} className="text-[11px] md:text-xs text-rose-500 hover:text-white font-medium cursor-pointer bg-rose-50 hover:bg-rose-500 px-3 py-2 rounded-lg transition-all border border-rose-100 hover:border-rose-500">
-                            Excluir
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
           </div>
         </div>
+      )}
 
-      </div>
+      {/* ================================================================= */}
+      {/* ABA: CADASTRO / EDIÇÃO */}
+      {/* ================================================================= */}
+      {abaAtual === 'cadastro' && (
+        <div className="max-w-4xl mx-auto animate-fade-in">
+          <div className="bg-white border border-lua-rose-dark/10 p-6 md:p-8 rounded-2xl shadow-xs">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-4 mb-6">
+               <h3 className="font-serif text-xl md:text-2xl font-bold text-slate-800">
+                 {editandoId ? 'Editando Produto' : 'Registrar Novo Produto'}
+               </h3>
+               {editandoId && (
+                   <button onClick={cancelarEdicao} className="text-xs text-rose-500 hover:text-rose-700 font-bold uppercase tracking-wider bg-rose-50 px-3 py-1.5 rounded-lg">
+                       Cancelar Edição
+                   </button>
+               )}
+            </div>
+            
+            <form onSubmit={handleCadastrar} className="space-y-6">
+              
+              <div className="p-5 bg-slate-50/50 border border-slate-200 rounded-xl space-y-5">
+                <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-2">
+                  <span>1.</span> Informações Básicas
+                </h4>
+                
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5">Nome do Modelo</label>
+                  <input type="text" placeholder="ex: Pijama Americano Satin" value={nome} onChange={(e) => setNome(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark focus:ring-1 focus:ring-lua-rose-dark transition-all shadow-sm" required />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5">Preço Varejo Base (R$)</label>
+                    <input type="number" step="0.01" placeholder="0.00" value={precoVarejo} onChange={(e) => setPrecoVarejo(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark focus:ring-1 focus:ring-lua-rose-dark shadow-sm" required />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5">Preço Atacado (R$)</label>
+                    <input type="number" step="0.01" placeholder="0.00" value={precoAtacado} onChange={(e) => setPrecoAtacado(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark focus:ring-1 focus:ring-lua-rose-dark shadow-sm" required />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5">Tag Vitrine</label>
+                    <input type="text" placeholder="ex: Mais Vendido" value={tag} onChange={(e) => setTag(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark focus:ring-1 focus:ring-lua-rose-dark shadow-sm" />
+                  </div>
+                </div>
+
+                {/* 🌟 GALERIA DE FOTOS EXISTENTES (Aparece ao editar) */}
+                {fotosExistentes.length > 0 && (
+                  <div className="pt-2">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2">Imagens Salvas (A primeira é a capa)</label>
+                    <div className="flex flex-wrap gap-3 p-3 bg-white border border-slate-200 rounded-lg shadow-inner">
+                      {fotosExistentes.map((url, idx) => (
+                        <div key={idx} className={`relative w-24 h-24 rounded-lg overflow-hidden group transition-all ${idx === 0 ? 'ring-2 ring-lua-rose-dark shadow-md' : 'border border-slate-200'}`}>
+                          <img src={url} alt={`Foto ${idx+1}`} className="w-full h-full object-cover" />
+                          
+                          {idx === 0 && <div className="absolute top-0 left-0 bg-lua-rose-dark text-white text-[9px] font-bold uppercase px-2 py-0.5 rounded-br-lg shadow-sm z-10">Capa</div>}
+                          
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 z-20">
+                             {idx !== 0 && (
+                               <button type="button" onClick={() => tornarCapa(idx)} className="text-[9px] uppercase tracking-wider bg-white text-slate-800 px-2 py-1 rounded font-bold hover:bg-lua-rose-light w-16">Capa</button>
+                             )}
+                             <button type="button" onClick={() => removerFotoExistente(idx)} className="text-[9px] uppercase tracking-wider bg-rose-500 text-white px-2 py-1 rounded font-bold hover:bg-rose-600 w-16">Excluir</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5">
+                    {fotosExistentes.length > 0 ? 'Adicionar Novas Fotos' : 'Fotos do Produto'}
+                  </label>
+                  <input id="input-foto" type="file" accept="image/*" multiple onChange={(e) => setFotosArquivos(Array.from(e.target.files))} className="w-full text-sm bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 transition-all cursor-pointer" />
+                  {fotosArquivos.length > 0 && <p className="text-[10px] text-green-600 mt-2 font-semibold">+{fotosArquivos.length} foto(s) pronta(s) para upload.</p>}
+                </div>
+              </div>
+
+              <div className="p-5 border border-lua-rose-dark/30 bg-lua-rose-light/10 rounded-xl space-y-5">
+                <h4 className="text-sm font-bold text-lua-rose-dark flex items-center gap-2 border-b border-lua-rose-dark/20 pb-2">
+                  <span>2.</span> Grade de Variações e Estoque
+                </h4>
+                
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1.5">Cor da Peça</label>
+                    <input type="text" placeholder="ex: Rosé, Azul Marinho..." value={novaCor} onChange={(e) => setNovaCor(e.target.value)} className="w-full md:w-1/2 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-lua-rose-dark focus:ring-1 focus:ring-lua-rose-dark" />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-2">Quantidades por Tamanho</label>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                      {['PP', 'P', 'M', 'G', 'GG'].map(tam => (
+                         <div key={tam} className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex flex-col items-center shadow-xs">
+                            <span className="font-bold text-slate-800 text-sm mb-2">{tam}</span>
+                            <div className="w-full space-y-2">
+                               <div>
+                                 <span className="text-[9px] uppercase tracking-wider text-slate-400 block mb-0.5">Estoque (Qtd)</span>
+                                 <input type="number" placeholder="0" value={grade[tam].qtd} onChange={(e) => handleGradeChange(tam, 'qtd', e.target.value)} className="w-full bg-white border border-slate-200 rounded-md text-center text-sm py-1.5 focus:border-lua-rose-dark focus:outline-none" />
+                               </div>
+                               <div>
+                                 <span className="text-[9px] uppercase tracking-wider text-slate-400 block mb-0.5">Acréscimo R$</span>
+                                 <input type="number" step="0.01" placeholder="+ 0.00" value={grade[tam].acrescimo} onChange={(e) => handleGradeChange(tam, 'acrescimo', e.target.value)} className="w-full bg-white border border-slate-200 rounded-md text-center text-xs py-1.5 text-green-700 focus:border-green-500 focus:outline-none placeholder:text-slate-300" />
+                               </div>
+                            </div>
+                         </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button type="button" onClick={adicionarGradeDaCor} className="w-full bg-slate-800 text-white py-3 rounded-xl text-xs uppercase tracking-widest font-bold hover:bg-slate-900 transition-all shadow-md">
+                    Adicionar Cor à Lista ↓
+                  </button>
+                </div>
+
+                {variacoesInput.length > 0 && (
+                  <div className="mt-4 bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                    <h5 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 border-b border-slate-100 pb-2">Itens na Grade deste Produto:</h5>
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-2 no-scrollbar">
+                      {variacoesInput.map((v) => (
+                        <div key={v.id_local} className="flex justify-between items-center bg-slate-50 px-4 py-2.5 rounded-lg border border-slate-100 text-sm">
+                          <span className="font-medium text-slate-700 flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                            <span>Cor: <b>{v.cor}</b> <span className="text-slate-300 mx-2 hidden sm:inline">|</span> Tamanho: <b>{v.tamanho}</b></span>
+                            {v.preco_adicional > 0 && <span className="text-[10px] text-green-600 font-bold bg-green-100 px-2 py-0.5 rounded uppercase tracking-wider">(+{v.preco_adicional} R$)</span>}
+                          </span>
+                          <div className="flex items-center gap-4">
+                            <span className="bg-white border border-slate-200 px-3 py-1 rounded text-xs font-bold text-slate-700 shadow-sm">{v.quantidade} unds.</span>
+                            <button type="button" onClick={() => removerVariacao(v.id_local)} className="text-rose-400 hover:text-white bg-rose-50 hover:bg-rose-500 w-7 h-7 rounded-md flex items-center justify-center transition-all border border-rose-100 hover:border-rose-500 shadow-sm">✕</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                {editandoId && (
+                  <button type="button" onClick={cancelarEdicao} className="w-1/3 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3.5 rounded-xl text-sm font-bold uppercase tracking-wider transition-colors">
+                    Cancelar
+                  </button>
+                )}
+                <button type="submit" disabled={salvando} className={`${editandoId ? 'w-2/3' : 'w-full'} bg-lua-rose-dark text-white py-3.5 rounded-xl text-sm font-bold uppercase tracking-widest hover:bg-lua-rose transition-all shadow-md disabled:opacity-70`}>
+                  {salvando ? '⏳ Salvando Alterações...' : (editandoId ? 'Concluir Edição' : 'Cadastrar Produto Definitivo')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

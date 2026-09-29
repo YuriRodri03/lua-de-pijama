@@ -7,10 +7,10 @@ export default function GestaoDespesas() {
   const [despesas, setDespesas] = useState([]);
   const [carregando, setCarregando] = useState(true);
 
-  // Estados do Formulário
+  // Estados do Formulário de Despesa
   const [descricao, setDescricao] = useState('');
   const [valor, setValor] = useState('');
-  const [categoria, setCategoria] = useState('Embalagens');
+  const [categoria, setCategoria] = useState('');
   const [dataVencimento, setDataVencimento] = useState('');
   const [status, setStatus] = useState('pendente');
 
@@ -18,12 +18,36 @@ export default function GestaoDespesas() {
   const [mesFiltro, setMesFiltro] = useState('08');
   const [anoFiltro, setAnoFiltro] = useState('2026');
 
-  // 1. BUSCAR DESPESAS NO BANCO COM FILTRO DE VENCIMENTO
+  // 🌟 NOVOS ESTADOS PARA GESTÃO DE CATEGORIAS 🌟
+  const [categorias, setCategorias] = useState([]);
+  const [modalCatAberto, setModalCatAberto] = useState(false);
+  const [catNomeInput, setCatNomeInput] = useState('');
+  const [catEditandoId, setCatEditandoId] = useState(null);
+  const [salvandoCat, setSalvandoCat] = useState(false);
+
+  // 1. BUSCAR CATEGORIAS DO BANCO
+  const buscarCategorias = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('categorias_despesa')
+        .select('*')
+        .order('nome');
+      if (error) throw error;
+      setCategorias(data || []);
+      
+      // Auto-seleciona a primeira categoria se o campo estiver vazio
+      if (data && data.length > 0 && !categoria) {
+        setCategoria(data[0].nome);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar categorias:', error.message);
+    }
+  };
+
+  // 2. BUSCAR DESPESAS NO BANCO COM FILTRO DE VENCIMENTO
   const buscarDespesas = useCallback(async () => {
     try {
       setCarregando(true);
-      
-      // Descobre o último dia do mês selecionado para o filtro exato
       const ultimoDia = new Date(parseInt(anoFiltro), parseInt(mesFiltro), 0).getDate();
       const dataInicio = `${anoFiltro}-${mesFiltro}-01`;
       const dataFim = `${anoFiltro}-${mesFiltro}-${ultimoDia}`;
@@ -33,7 +57,7 @@ export default function GestaoDespesas() {
         .select('*')
         .gte('data_vencimento', dataInicio)
         .lte('data_vencimento', dataFim)
-        .order('data_vencimento', { ascending: true }); // Ordena pelas mais próximas a vencer no mês
+        .order('data_vencimento', { ascending: true });
 
       if (error) throw error;
       setDespesas(data || []);
@@ -44,14 +68,19 @@ export default function GestaoDespesas() {
     }
   }, [mesFiltro, anoFiltro]);
 
+  // Efeito Inicial
   useEffect(() => {
+    buscarCategorias();
     buscarDespesas();
   }, [buscarDespesas]);
 
-  // 2. SALVAR NOVA DESPESA
+  // 3. SALVAR NOVA DESPESA
   const handleSalvarDespesa = async (e) => {
     e.preventDefault();
-    if (!descricao || !valor || !dataVencimento) return;
+    if (!descricao || !valor || !dataVencimento || !categoria) {
+      alert("Preencha todos os campos, incluindo a categoria.");
+      return;
+    }
 
     try {
       const { error } = await supabase
@@ -67,13 +96,10 @@ export default function GestaoDespesas() {
       if (error) throw error;
 
       alert('Despesa registrada com sucesso!');
-      
-      // Limpar formulário
       setDescricao('');
       setValor('');
       setDataVencimento('');
       setStatus('pendente');
-      
       buscarDespesas();
     } catch (error) {
       console.error('Erro ao salvar despesa:', error.message);
@@ -81,15 +107,11 @@ export default function GestaoDespesas() {
     }
   };
 
-  // 3. MARCAR COMO PAGO / PENDENTE (TOGGLE RÁPIDO)
+  // 4. MARCAR COMO PAGO / PENDENTE
   const alternarStatus = async (id, statusAtual) => {
     const novoStatus = statusAtual === 'pago' ? 'pendente' : 'pago';
     try {
-      const { error } = await supabase
-        .from('despesas')
-        .update({ status: novoStatus })
-        .eq('id', id);
-
+      const { error } = await supabase.from('despesas').update({ status: novoStatus }).eq('id', id);
       if (error) throw error;
       buscarDespesas(); 
     } catch (error) {
@@ -97,7 +119,7 @@ export default function GestaoDespesas() {
     }
   };
 
-  // 4. EXCLUIR DESPESA
+  // 5. EXCLUIR DESPESA
   const handleExcluir = async (id) => {
     if (!window.confirm('Tem certeza que deseja excluir este registro?')) return;
     try {
@@ -109,18 +131,117 @@ export default function GestaoDespesas() {
     }
   };
 
-  // 5. CÁLCULOS DOS CARDS (Baseados no mês filtrado)
-  const totalPendente = despesas
-    .filter(d => d.status === 'pendente')
-    .reduce((acc, curr) => acc + parseFloat(curr.valor), 0);
-    
-  const totalPago = despesas
-    .filter(d => d.status === 'pago')
-    .reduce((acc, curr) => acc + parseFloat(curr.valor), 0);
+  // 🌟 FUNÇÕES DO GERENCIADOR DE CATEGORIAS 🌟
+  const handleSalvarCategoria = async (e) => {
+    e.preventDefault();
+    if (!catNomeInput.trim()) return;
+
+    setSalvandoCat(true);
+    try {
+      if (catEditandoId) {
+        const { error } = await supabase.from('categorias_despesa').update({ nome: catNomeInput }).eq('id', catEditandoId);
+        if (error) throw error;
+        
+        if (categoria === categorias.find(c => c.id === catEditandoId)?.nome) {
+           setCategoria(catNomeInput);
+        }
+      } else {
+        const { error } = await supabase.from('categorias_despesa').insert([{ nome: catNomeInput }]);
+        if (error) throw error;
+      }
+
+      setCatNomeInput('');
+      setCatEditandoId(null);
+      buscarCategorias();
+    } catch (error) {
+      console.error('Erro ao salvar categoria:', error.message);
+      alert('Erro ao salvar. Verifique se o nome já não existe.');
+    } finally {
+      setSalvandoCat(false);
+    }
+  };
+
+  const handleEditarCategoria = (cat) => {
+    setCatEditandoId(cat.id);
+    setCatNomeInput(cat.nome);
+  };
+
+  const handleExcluirCategoria = async (id) => {
+    if (!window.confirm('Excluir esta categoria? Isso não afetará as despesas já cadastradas com esse nome.')) return;
+    try {
+      const { error } = await supabase.from('categorias_despesa').delete().eq('id', id);
+      if (error) throw error;
+      buscarCategorias();
+    } catch (error) {
+      console.error('Erro ao excluir categoria:', error.message);
+    }
+  };
+
+  const fecharModalCategoria = () => {
+    setModalCatAberto(false);
+    setCatEditandoId(null);
+    setCatNomeInput('');
+  };
+
+  // Cálculos
+  const totalPendente = despesas.filter(d => d.status === 'pendente').reduce((acc, curr) => acc + parseFloat(curr.valor), 0);
+  const totalPago = despesas.filter(d => d.status === 'pago').reduce((acc, curr) => acc + parseFloat(curr.valor), 0);
 
   return (
-    <div className="space-y-6 md:space-y-8 text-left pb-16 animate-fade-in">
+    <div className="space-y-6 md:space-y-8 text-left pb-16 animate-fade-in relative">
       
+      {/* 🌟 MODAL GERENCIADOR DE CATEGORIAS 🌟 */}
+      {modalCatAberto && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center p-5 border-b border-slate-100">
+              <h3 className="font-serif font-bold text-lg text-slate-800">Gerenciar Categorias</h3>
+              <button onClick={fecharModalCategoria} className="text-slate-400 hover:text-slate-700 transition-colors text-xl">✕</button>
+            </div>
+            
+            <div className="p-5 flex-1 overflow-y-auto bg-slate-50/50">
+              <form onSubmit={handleSalvarCategoria} className="flex gap-2 mb-6">
+                <input 
+                  type="text" 
+                  value={catNomeInput} 
+                  onChange={(e) => setCatNomeInput(e.target.value)} 
+                  placeholder="Nome (Ex: 🍔 Alimentação)"
+                  className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-lua-rose-dark shadow-sm"
+                  required
+                />
+                <button type="submit" disabled={salvandoCat} className="bg-slate-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-lua-rose-dark transition-colors shadow-sm disabled:opacity-70">
+                  {salvandoCat ? '...' : (catEditandoId ? 'Atualizar' : 'Adicionar')}
+                </button>
+                {catEditandoId && (
+                   <button type="button" onClick={() => {setCatEditandoId(null); setCatNomeInput('');}} className="text-xs font-bold text-slate-400 hover:text-slate-600 px-2">Cancelar</button>
+                )}
+              </form>
+
+              <div className="space-y-2">
+                <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Categorias Atuais</h4>
+                {categorias.map(cat => (
+                  <div key={cat.id} className={`flex justify-between items-center bg-white p-3 rounded-xl border transition-colors shadow-xs ${catEditandoId === cat.id ? 'border-lua-rose-dark ring-1 ring-lua-rose-dark/20' : 'border-slate-100 hover:border-slate-200'}`}>
+                    <span className="text-sm font-medium text-slate-700">{cat.nome}</span>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => handleEditarCategoria(cat)} className="text-[10px] uppercase font-bold text-blue-500 hover:text-blue-700 bg-blue-50 px-2 py-1 rounded transition-colors">Editar</button>
+                      <button onClick={() => handleExcluirCategoria(cat.id)} className="text-[10px] uppercase font-bold text-rose-500 hover:text-rose-700 bg-rose-50 px-2 py-1 rounded transition-colors">Excluir</button>
+                    </div>
+                  </div>
+                ))}
+                {categorias.length === 0 && <p className="text-xs text-center text-slate-400 py-4">Nenhuma categoria criada.</p>}
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-slate-100 bg-white">
+               <button onClick={fecharModalCategoria} className="w-full bg-slate-100 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-200 transition-colors text-sm">
+                 Fechar Painel
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
       {/* BARRA DE FILTRO MENSAL */}
       <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 bg-white border border-slate-100 p-3 rounded-2xl shadow-xs">
         <div className="text-slate-800 font-serif font-bold text-sm md:text-base px-2">
@@ -183,20 +304,20 @@ export default function GestaoDespesas() {
           <form onSubmit={handleSalvarDespesa} className="space-y-4">
             
             <div>
-              <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Descrição</label>
+              <label className="text-xs font-semibold uppercase text-slate-500 block mb-1.5">Descrição</label>
               <input 
                 type="text"
                 placeholder="Ex: Conta de Luz, Etiquetas..."
                 value={descricao}
                 onChange={(e) => setDescricao(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark"
                 required
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Valor (R$)</label>
+                <label className="text-xs font-semibold uppercase text-slate-500 block mb-1.5">Valor (R$)</label>
                 <input 
                   type="number"
                   step="0.01"
@@ -204,45 +325,56 @@ export default function GestaoDespesas() {
                   placeholder="0.00"
                   value={valor}
                   onChange={(e) => setValor(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark font-mono font-bold"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark font-mono font-bold"
                   required
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Vencimento</label>
+                <label className="text-xs font-semibold uppercase text-slate-500 block mb-1.5">Vencimento</label>
                 <input 
                   type="date"
                   value={dataVencimento}
                   onChange={(e) => setDataVencimento(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark"
                   required
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
+              
+              {/* 🌟 CAMPO DE CATEGORIA MELHORADO 🌟 */}
               <div>
-                <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Categoria</label>
-                <select
-                  value={categoria}
-                  onChange={(e) => setCategoria(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark"
-                >
-                  <option value="Embalagens">📦 Embalagens</option>
-                  <option value="Insumos">✂️ Insumos/Tecidos</option>
-                  <option value="Marketing">📱 Marketing/Anúncios</option>
-                  <option value="Operacional">🏢 Operacional (Luz, Internet)</option>
-                  <option value="Logística">🚚 Logística/Fretes</option>
-                  <option value="Impostos">📄 Impostos</option>
-                  <option value="Outros">Outros</option>
-                </select>
+                <label className="text-xs font-semibold uppercase text-slate-500 block mb-1.5">Categoria</label>
+                <div className="flex gap-2">
+                  <select
+                    value={categoria}
+                    onChange={(e) => setCategoria(e.target.value)}
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark"
+                    required
+                  >
+                    {categorias.length === 0 && <option value="">Carregando...</option>}
+                    {categorias.map(cat => (
+                      <option key={cat.id} value={cat.nome}>{cat.nome}</option>
+                    ))}
+                  </select>
+                  <button 
+                    type="button" 
+                    onClick={() => setModalCatAberto(true)} 
+                    title="Gerenciar Categorias"
+                    className="bg-slate-50 border border-slate-200 hover:bg-slate-100 hover:border-slate-300 text-slate-600 px-3 rounded-xl transition-all flex items-center justify-center shadow-sm"
+                  >
+                    ⚙️
+                  </button>
+                </div>
               </div>
+
               <div>
-                <label className="text-xs font-semibold uppercase text-slate-500 block mb-1">Status Inicial</label>
+                <label className="text-xs font-semibold uppercase text-slate-500 block mb-1.5">Status Inicial</label>
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark font-bold"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark font-bold"
                 >
                   <option value="pendente">⏳ A Pagar</option>
                   <option value="pago">✅ Já Pago</option>
@@ -250,8 +382,8 @@ export default function GestaoDespesas() {
               </div>
             </div>
 
-            <div className="pt-2">
-              <Button variant="primary" type="submit" className="w-full py-2.5 shadow-md">
+            <div className="pt-3">
+              <Button variant="primary" type="submit" className="w-full py-3 shadow-md">
                 Adicionar Despesa
               </Button>
             </div>

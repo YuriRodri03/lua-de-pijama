@@ -8,11 +8,12 @@ import {
 } from 'recharts';
 
 export default function PainelSistema({ userRole }) {
-  // Estado para controlar a visão principal (Dashboard vs Pedidos)
+  // Estado para controlar a visão principal (Dashboard vs Pedidos vs Comissões)
   const [visaoPrincipal, setVisaoPrincipal] = useState('dashboard');
 
   const [produtos, setProdutos] = useState([]);
   const [vendas, setVendas] = useState([]);
+  const [equipe, setEquipe] = useState([]); // <-- NOVO: Guarda os vendedores
   const [custosOperacionais, setCustosOperacionais] = useState(0);
   const [receitaTotal, setReceitaTotal] = useState(0);
   const [dadosFluxoCaixa, setDadosFluxoCaixa] = useState([]);
@@ -25,6 +26,9 @@ export default function PainelSistema({ userRole }) {
 
   const [mes, setMes] = useState('08');
   const [ano, setAno] = useState('2026');
+  
+  // NOVO: Taxa padrão de comissão ajustável pelo gestor na tela
+  const [taxaComissao, setTaxaComissao] = useState(5); 
 
   const CORES_GRAFICO = ['#8b5a62', '#a87b82', '#c59ca3', '#e2bec4', '#f1d6db', '#cbd5e1'];
 
@@ -58,10 +62,10 @@ export default function PainelSistema({ userRole }) {
 
       if (despError) throw despError;
 
-      // C. Busca Receitas (Trazendo Itens, Cliente e Status de Entrega)
+      // C. Busca Receitas (Agora trazendo o vendedor_id)
       const { data: vendData, error: vendError } = await supabase
         .from('vendas')
-        .select('id, total, criado_em, status_pagamento, cliente_nome, cliente_telefone, status_entrega, itens') 
+        .select('id, total, criado_em, status_pagamento, cliente_nome, cliente_telefone, status_entrega, itens, vendedor_id') 
         .gte('criado_em', dataInicio)
         .lte('criado_em', dataFim)
         .order('criado_em', { ascending: false });
@@ -69,7 +73,16 @@ export default function PainelSistema({ userRole }) {
       if (vendError) console.warn('Erro ao buscar vendas:', vendError);
       setVendas(vendData || []);
 
-      // D. Fluxo de Caixa (Anual)
+      // D. Busca Equipe (Apenas Vendedores e Admins para calcular comissões)
+      const { data: equipeData, error: equipeError } = await supabase
+        .from('perfis')
+        .select('id, nome, role')
+        .in('role', ['vendedor', 'admin']);
+        
+      if (equipeError) console.warn('Erro ao buscar equipe:', equipeError);
+      setEquipe(equipeData || []);
+
+      // E. Fluxo de Caixa (Anual)
       const mesesAbrev = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
       let fluxoAnual = mesesAbrev.map(m => ({ mes: m, receitas: 0, despesas: 0, saldo: 0 }));
 
@@ -101,7 +114,7 @@ export default function PainelSistema({ userRole }) {
 
       setDadosFluxoCaixa(fluxoAnual);
 
-      // E. Totais
+      // F. Totais
       const custoReal = despData?.reduce((acc, curr) => acc + parseFloat(curr.valor), 0) || 0;
       const receitasPagas = vendData?.filter(v => v.status_pagamento === 'pago') || [];
       const receitaReal = receitasPagas.reduce((acc, curr) => acc + parseFloat(curr.total), 0) || 0; 
@@ -146,11 +159,9 @@ export default function PainelSistema({ userRole }) {
     }
   };
 
-  // Função para alternar o status de entrega do pedido
   const handleAlternarEntrega = async (pedidoId, statusAtual) => {
     const novoStatus = statusAtual === 'entregue' ? 'pendente' : 'entregue';
     
-    // Atualiza localmente para resposta rápida na interface
     setVendas(prevVendas => prevVendas.map(v => 
       v.id === pedidoId ? { ...v, status_entrega: novoStatus } : v
     ));
@@ -165,10 +176,27 @@ export default function PainelSistema({ userRole }) {
     } catch (error) {
       console.error('Erro ao atualizar entrega:', error);
       alert('Erro ao atualizar o status de entrega.');
-      // Se falhar, reverte localmente chamando a busca
       buscarDados();
     }
   };
+
+  // CÁLCULOS DE DESEMPENHO E COMISSÕES
+  const vendasPagasDoPeriodo = vendas.filter(v => v.status_pagamento === 'pago');
+  
+  const desempenhoEquipe = equipe.map(membro => {
+    // Pega todas as vendas pagas onde o vendedor_id é o ID deste membro
+    const vendasDoMembro = vendasPagasDoPeriodo.filter(v => v.vendedor_id === membro.id);
+    const totalVendido = vendasDoMembro.reduce((acc, v) => acc + parseFloat(v.total || 0), 0);
+    const qtdVendas = vendasDoMembro.length;
+    const comissao = totalVendido * (taxaComissao / 100);
+
+    return {
+      ...membro,
+      totalVendido,
+      qtdVendas,
+      comissao
+    };
+  }).sort((a, b) => b.totalVendido - a.totalVendido); // Ordena quem vendeu mais pro topo
 
   const valorTotalEstoqueVarejo = produtos.reduce((acc, curr) => acc + (parseFloat(curr.preco_varejo || 0) * parseInt(curr.quantidade_estoque || 0)), 0);
   const produtosFiltrados = produtos.filter(prod => prod.nome.toLowerCase().includes(termoBusca.toLowerCase()));
@@ -213,27 +241,37 @@ export default function PainelSistema({ userRole }) {
   return (
     <div className="space-y-6 md:space-y-8 pb-16 animate-fade-in text-left">
       
-      {/* NAVEGAÇÃO PRINCIPAL (DASHBOARD VS PEDIDOS) */}
-      <div className="flex bg-slate-200/50 p-1.5 rounded-xl md:w-max mx-auto shadow-inner border border-slate-200/60">
+      {/* NAVEGAÇÃO PRINCIPAL EM 3 ABAS */}
+      <div className="flex flex-col sm:flex-row bg-slate-200/50 p-1.5 rounded-xl sm:w-max mx-auto shadow-inner border border-slate-200/60 gap-1">
         <button
           onClick={() => setVisaoPrincipal('dashboard')}
-          className={`flex-1 md:flex-none px-6 py-2.5 rounded-lg text-sm font-bold transition-all duration-300 flex items-center justify-center gap-2 ${
+          className={`px-4 md:px-6 py-2.5 rounded-lg text-xs md:text-sm font-bold transition-all duration-300 flex items-center justify-center gap-2 ${
             visaoPrincipal === 'dashboard' 
             ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50' 
             : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
           }`}
         >
-          📈 Dashboard Financeiro
+          📈 Dashboard
         </button>
         <button
           onClick={() => setVisaoPrincipal('pedidos')}
-          className={`flex-1 md:flex-none px-6 py-2.5 rounded-lg text-sm font-bold transition-all duration-300 flex items-center justify-center gap-2 ${
+          className={`px-4 md:px-6 py-2.5 rounded-lg text-xs md:text-sm font-bold transition-all duration-300 flex items-center justify-center gap-2 ${
             visaoPrincipal === 'pedidos' 
             ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50' 
             : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
           }`}
         >
-          📦 Gestão de Pedidos
+          📦 Pedidos
+        </button>
+        <button
+          onClick={() => setVisaoPrincipal('comissoes')}
+          className={`px-4 md:px-6 py-2.5 rounded-lg text-xs md:text-sm font-bold transition-all duration-300 flex items-center justify-center gap-2 ${
+            visaoPrincipal === 'comissoes' 
+            ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50' 
+            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+          }`}
+        >
+          👔 Comissões
         </button>
       </div>
 
@@ -271,15 +309,13 @@ export default function PainelSistema({ userRole }) {
                   <option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
                 </select>
               )}
-              {/* ANO DINÂMICO (DASHBOARD) */}
+              {/* ANO DINÂMICO */}
               <select 
                 value={ano} onChange={(e) => setAno(e.target.value)}
                 className="flex-1 xl:flex-none bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs md:text-sm font-semibold text-slate-700 focus:outline-none focus:border-lua-rose-dark cursor-pointer"
               >
                 {Array.from({ length: 10 }, (_, i) => 2024 + i).map(anoGerado => (
-                  <option key={anoGerado} value={anoGerado}>
-                    {anoGerado}
-                  </option>
+                  <option key={anoGerado} value={anoGerado}>{anoGerado}</option>
                 ))}
               </select>
             </div>
@@ -380,7 +416,7 @@ export default function PainelSistema({ userRole }) {
                     <th className="px-5 py-4">Produto</th>
                     <th className="px-5 py-4">Varejo (R$)</th>
                     <th className="px-5 py-4">Atacado (R$)</th>
-                    <th className="px-5 py-4 text-center">Volume</th>
+                    <th className="px-5 py-4 text-center">Volume Base</th>
                     <th className="px-5 py-4">Status</th>
                   </tr>
                 </thead>
@@ -395,9 +431,9 @@ export default function PainelSistema({ userRole }) {
                         <td className="px-5 py-4 font-serif font-bold text-slate-800 truncate max-w-[200px]">{prod.nome}</td>
                         <td className="px-5 py-4"><input type="number" step="0.01" value={prod.preco_varejo} onChange={(e) => handleInputChange(prod.id, 'preco_varejo', parseFloat(e.target.value) || 0)} className="w-24 px-2 py-1.5 bg-slate-50 border border-transparent hover:border-slate-200 focus:bg-white rounded-lg font-mono outline-none"/></td>
                         <td className="px-5 py-4"><input type="number" step="0.01" value={prod.preco_atacado} onChange={(e) => handleInputChange(prod.id, 'preco_atacado', parseFloat(e.target.value) || 0)} className="w-24 px-2 py-1.5 bg-slate-50 border border-transparent hover:border-slate-200 focus:bg-white rounded-lg font-mono outline-none"/></td>
-                        <td className="px-5 py-4 flex justify-center"><input type="number" value={prod.quantidade_estoque} onChange={(e) => handleInputChange(prod.id, 'quantidade_estoque', parseInt(e.target.value) || 0)} className="w-16 text-center py-1.5 bg-slate-50 border border-transparent hover:border-slate-200 focus:bg-white rounded-lg font-mono outline-none"/></td>
+                        <td className="px-5 py-4 flex justify-center"><input type="number" value={prod.quantidade_estoque || 0} onChange={(e) => handleInputChange(prod.id, 'quantidade_estoque', parseInt(e.target.value) || 0)} className="w-16 text-center py-1.5 bg-slate-50 border border-transparent hover:border-slate-200 focus:bg-white rounded-lg font-mono outline-none" title="Estoque legado. Para novos, ajuste na tela de Estoque."/></td>
                         <td className="px-5 py-4">
-                          {prod.quantidade_estoque <= 0 ? <span className="bg-rose-50 text-rose-700 px-2 py-1 rounded text-xs font-bold">Esgotado</span> : prod.quantidade_estoque <= 4 ? <span className="bg-amber-50 text-amber-700 px-2 py-1 rounded text-xs font-bold">Crítico</span> : <span className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded text-xs font-bold">Saudável</span>}
+                          {prod.quantidade_estoque <= 0 ? <span className="bg-rose-50 text-rose-700 px-2 py-1 rounded text-xs font-bold">Gerenciado nas Variações</span> : <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-bold">Legado</span>}
                         </td>
                       </tr>
                     ))
@@ -417,31 +453,24 @@ export default function PainelSistema({ userRole }) {
           <div className="p-5 md:p-7 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div className="text-left">
               <h2 className="text-lg md:text-xl font-bold text-slate-800">Controle Logístico e Pedidos</h2>
-              <p className="text-xs md:text-sm text-slate-500 mt-1">
-                Acompanhe o pagamento e atualize o status de entrega dos clientes.
-              </p>
+              <p className="text-xs md:text-sm text-slate-500 mt-1">Acompanhe o pagamento e atualize o status de entrega dos clientes.</p>
             </div>
             <div className="flex gap-2">
                <select 
-                  value={mes} onChange={(e) => setMes(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none cursor-pointer"
-                >
-                  <option value="01">Janeiro</option><option value="02">Fevereiro</option><option value="03">Março</option>
-                  <option value="04">Abril</option><option value="05">Maio</option><option value="06">Junho</option>
-                  <option value="07">Julho</option><option value="08">Agosto</option><option value="09">Setembro</option>
-                  <option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
-                </select>
-                {/* ANO DINÂMICO (PEDIDOS) */}
-                <select 
-                  value={ano} onChange={(e) => setAno(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none cursor-pointer"
-                >
-                  {Array.from({ length: 10 }, (_, i) => 2024 + i).map(anoGerado => (
-                    <option key={anoGerado} value={anoGerado}>
-                      {anoGerado}
-                    </option>
-                  ))}
-                </select>
+                 value={mes} onChange={(e) => setMes(e.target.value)}
+                 className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none cursor-pointer"
+               >
+                 <option value="01">Janeiro</option><option value="02">Fevereiro</option><option value="03">Março</option>
+                 <option value="04">Abril</option><option value="05">Maio</option><option value="06">Junho</option>
+                 <option value="07">Julho</option><option value="08">Agosto</option><option value="09">Setembro</option>
+                 <option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
+               </select>
+               <select 
+                 value={ano} onChange={(e) => setAno(e.target.value)}
+                 className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none cursor-pointer"
+               >
+                 {Array.from({ length: 10 }, (_, i) => 2024 + i).map(a => <option key={a} value={a}>{a}</option>)}
+               </select>
             </div>
           </div>
 
@@ -465,18 +494,11 @@ export default function PainelSistema({ userRole }) {
                 ) : (
                   vendas.map((venda) => (
                     <tr key={venda.id} className="hover:bg-slate-50/80 transition-colors">
-                      {/* ID */}
-                      <td className="px-5 py-4 font-mono text-slate-800 text-sm font-semibold">
-                        #{venda.id}
-                      </td>
-                      
-                      {/* CLIENTE */}
+                      <td className="px-5 py-4 font-mono text-slate-800 text-sm font-semibold">#{venda.id.substring(0,6)}</td>
                       <td className="px-5 py-4">
                         <div className="font-bold text-slate-800 truncate w-40" title={venda.cliente_nome}>{venda.cliente_nome || 'Não informado'}</div>
                         <div className="text-xs text-slate-500 font-mono mt-0.5">{venda.cliente_telefone || '-'}</div>
                       </td>
-
-                      {/* ITENS COMPRADOS (Resumo) */}
                       <td className="px-5 py-4">
                         <div className="text-xs text-slate-600 space-y-1">
                           {Array.isArray(venda.itens) && venda.itens.length > 0 ? (
@@ -491,18 +513,10 @@ export default function PainelSistema({ userRole }) {
                           )}
                         </div>
                       </td>
-
-                      {/* VALOR E DATA */}
                       <td className="px-5 py-4">
-                        <div className="font-mono font-bold text-slate-800 text-sm">
-                          R$ {parseFloat(venda.total).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </div>
-                        <div className="text-[11px] text-slate-400 mt-1">
-                          {new Date(venda.criado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                        </div>
+                        <div className="font-mono font-bold text-slate-800 text-sm">R$ {parseFloat(venda.total).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                        <div className="text-[11px] text-slate-400 mt-1">{new Date(venda.criado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
                       </td>
-
-                      {/* PAGAMENTO */}
                       <td className="px-5 py-4 text-center whitespace-nowrap">
                         {venda.status_pagamento?.toLowerCase() === 'pago' ? (
                           <span className="bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-md border border-emerald-200 inline-flex items-center gap-1.5">
@@ -514,8 +528,6 @@ export default function PainelSistema({ userRole }) {
                           </span>
                         )}
                       </td>
-
-                      {/* AÇÃO DE ENTREGA (BOTÃO) */}
                       <td className="px-5 py-4 text-center">
                         <button
                           onClick={() => handleAlternarEntrega(venda.id, venda.status_entrega)}
@@ -524,7 +536,6 @@ export default function PainelSistema({ userRole }) {
                             ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-slate-50 hover:text-slate-500 hover:border-slate-300'
                             : 'bg-white text-slate-500 border-slate-300 shadow-sm hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200'
                           }`}
-                          title={venda.status_entrega === 'entregue' ? "Clique para reverter para pendente" : "Marcar como entregue"}
                         >
                           {venda.status_entrega === 'entregue' ? '✅ Entregue' : 'Marcar Entrega'}
                         </button>
@@ -537,6 +548,99 @@ export default function PainelSistema({ userRole }) {
           </div>
         </div>
       )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* VISÃO 3: DESEMPENHO E COMISSÕES DA EQUIPE */}
+      {/* ------------------------------------------------------------- */}
+      {visaoPrincipal === 'comissoes' && (
+        <div className="bg-white border border-slate-200/70 rounded-2xl shadow-sm overflow-hidden animate-fade-in">
+          <div className="p-5 md:p-7 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-5">
+            <div className="text-left flex-1">
+              <h2 className="text-lg md:text-xl font-bold text-slate-800">Desempenho da Equipe e Comissões</h2>
+              <p className="text-xs md:text-sm text-slate-500 mt-1">Acompanhe as vendas pagas e calcule o repasse para cada membro.</p>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto items-end sm:items-center">
+               <div className="flex flex-col text-left">
+                  <label className="text-[10px] uppercase font-bold text-slate-400 mb-1">Taxa de Comissão (%)</label>
+                  <div className="relative">
+                    <input 
+                      type="number" 
+                      min="0" max="100" 
+                      value={taxaComissao} 
+                      onChange={(e) => setTaxaComissao(parseFloat(e.target.value) || 0)}
+                      className="w-24 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-lua-rose-dark outline-none focus:border-lua-rose-dark"
+                    />
+                    <span className="absolute right-3 top-2 text-sm font-bold text-slate-400">%</span>
+                  </div>
+               </div>
+
+               <div className="flex gap-2">
+                 <select 
+                   value={mes} onChange={(e) => setMes(e.target.value)}
+                   className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none cursor-pointer"
+                 >
+                   <option value="01">Jan</option><option value="02">Fev</option><option value="03">Mar</option>
+                   <option value="04">Abr</option><option value="05">Mai</option><option value="06">Jun</option>
+                   <option value="07">Jul</option><option value="08">Ago</option><option value="09">Set</option>
+                   <option value="10">Out</option><option value="11">Nov</option><option value="12">Dez</option>
+                 </select>
+                 <select 
+                   value={ano} onChange={(e) => setAno(e.target.value)}
+                   className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none cursor-pointer"
+                 >
+                   {Array.from({ length: 10 }, (_, i) => 2024 + i).map(a => <option key={a} value={a}>{a}</option>)}
+                 </select>
+               </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-slate-600 min-w-[700px]">
+              <thead>
+                <tr className="bg-white border-b border-slate-200 text-slate-500 text-[11px] md:text-xs uppercase tracking-wider font-semibold">
+                  <th className="px-5 py-4">Colaborador</th>
+                  <th className="px-5 py-4 text-center">Nº de Vendas</th>
+                  <th className="px-5 py-4 text-right">Faturamento Total (R$)</th>
+                  <th className="px-5 py-4 text-right">Comissão Estimada (R$)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {carregando ? (
+                  <tr><td colSpan="4" className="p-12 text-center text-sm text-slate-400">Calculando resultados...</td></tr>
+                ) : desempenhoEquipe.length === 0 ? (
+                  <tr><td colSpan="4" className="p-12 text-center text-sm text-slate-400">Nenhum membro na equipe registrado.</td></tr>
+                ) : (
+                  desempenhoEquipe.map((membro) => (
+                    <tr key={membro.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="px-5 py-4">
+                        <div className="font-bold text-slate-800 text-sm">{membro.nome}</div>
+                        <div className="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">{membro.role === 'admin' ? 'Gestor' : 'Vendedor'}</div>
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        <span className="bg-slate-100 px-3 py-1 rounded-full text-xs font-bold text-slate-600">
+                          {membro.qtdVendas}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-right font-mono font-bold text-slate-800">
+                        R$ {membro.totalVendido.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-5 py-4 text-right font-mono font-bold text-emerald-600 bg-emerald-50/30">
+                        R$ {membro.comissao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          
+          <div className="p-4 bg-slate-50 border-t border-slate-100 text-[10px] text-slate-400 text-center">
+            * O cálculo de comissões leva em consideração apenas as vendas com o status <b>"✅ Pago"</b> no período selecionado. Vendas realizadas sem vendedor vinculado (clientes comprando sozinhos online pelo próprio login) não são contabilizadas.
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
