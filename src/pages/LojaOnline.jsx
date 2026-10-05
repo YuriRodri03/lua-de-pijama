@@ -15,7 +15,6 @@ function ProdutoVitrine({ produto, onAdicionarProduto }) {
   const [tamanhoSelecionado, setTamanhoSelecionado] = useState('');
   const [precoAtual, setPrecoAtual] = useState(produto.preco_varejo || 0);
   
-  // ESTADO DA GALERIA
   const [fotoIndex, setFotoIndex] = useState(0);
 
   const tamanhosDaCor = corSelecionada 
@@ -29,7 +28,7 @@ function ProdutoVitrine({ produto, onAdicionarProduto }) {
     if (coresDisponiveis.length === 1 && !corSelecionada) {
       setCorSelecionada(coresDisponiveis[0]);
     }
-  }, [coresDisponiveis]);
+  }, [coresDisponiveis, corSelecionada]);
 
   useEffect(() => {
     if (corSelecionada && tamanhoSelecionado) {
@@ -101,8 +100,6 @@ function ProdutoVitrine({ produto, onAdicionarProduto }) {
   return (
     <div className="flex flex-col relative group bg-white rounded-3xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.04)] hover:shadow-[0_10px_40px_-10px_rgba(0,0,0,0.12)] hover:-translate-y-1 transition-all duration-500 overflow-hidden border border-slate-100">
       
-      {/* 🌟 IMAGEM E GALERIA (AJUSTADA PARA OBJECT-CONTAIN) 🌟 */}
-      {/* Mudei o fundo para bg-white para misturar melhor com fotos que já tem fundo branco */}
       <div className="relative aspect-[3/4] bg-white overflow-hidden group/galeria border-b border-slate-50">
         {galeriaFotos.length > 0 ? (
           <>
@@ -111,7 +108,6 @@ function ProdutoVitrine({ produto, onAdicionarProduto }) {
                 key={idx}
                 src={foto} 
                 alt={`${produto.nome} - ângulo ${idx + 1}`} 
-                // ✨ A MÁGICA ESTÁ AQUI: object-contain garante que a foto toda caiba. O p-4 dá um respiro nas bordas.
                 className={`absolute inset-0 w-full h-full object-contain object-center p-4 transition-all duration-700 ease-in-out group-hover:scale-105 
                   ${fotoIndex === idx ? 'opacity-100 z-10' : 'opacity-0 z-0 scale-100'} 
                   ${estaEsgotado ? 'grayscale opacity-60' : ''}
@@ -119,7 +115,6 @@ function ProdutoVitrine({ produto, onAdicionarProduto }) {
               />
             ))}
 
-            {/* Setas de Navegação */}
             {temMaisDeUmaFoto && (
               <>
                 <button 
@@ -135,7 +130,6 @@ function ProdutoVitrine({ produto, onAdicionarProduto }) {
                   ❯
                 </button>
                 
-                {/* Indicadores de bolinha na parte inferior */}
                 <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5 z-20">
                   {galeriaFotos.map((_, idx) => (
                     <span 
@@ -154,7 +148,6 @@ function ProdutoVitrine({ produto, onAdicionarProduto }) {
           </div>
         )}
 
-        {/* Tags Flutuantes Premium */}
         <div className="absolute top-4 left-4 flex flex-col gap-2 z-20">
           {estaEsgotado ? (
             <span className="bg-slate-900/90 backdrop-blur-md text-white text-[9px] font-bold uppercase tracking-widest px-4 py-1.5 rounded-full">
@@ -170,10 +163,12 @@ function ProdutoVitrine({ produto, onAdicionarProduto }) {
         </div>
       </div>
 
-      {/* DETALHES DO PRODUTO */}
       <div className="p-5 md:p-6 flex flex-col flex-grow bg-white z-30 relative">
         <div className="mb-4">
           <h3 className="font-serif font-medium text-slate-900 text-lg md:text-xl leading-snug mb-1.5 line-clamp-2">{produto.nome}</h3>
+          {produto.categoria && (
+            <span className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block mb-2">{produto.categoria}</span>
+          )}
           <span className="text-slate-600 font-light text-lg transition-all duration-300">{formatarMoeda(precoAtual)}</span>
         </div>
 
@@ -263,17 +258,55 @@ function ProdutoVitrine({ produto, onAdicionarProduto }) {
 export default function LojaOnline({ onAdicionarProduto }) {
   const [produtos, setProdutos] = useState([]);
   const [carregando, setCarregando] = useState(true);
+  
+  // 🌟 ESTADOS DOS FILTROS INTELIGENTES 🌟
+  const [categoriasAtivas, setCategoriasAtivas] = useState([]);
+  const [categoriaSelecionada, setCategoriaSelecionada] = useState('Todas');
+  
+  const [termoBusca, setTermoBusca] = useState('');
+  const [corFiltro, setCorFiltro] = useState('');
+  const [tamanhoFiltro, setTamanhoFiltro] = useState('');
+  
+  // Extrai todas as cores e tamanhos reais que existem no estoque
+  const [opcoesCores, setOpcoesCores] = useState([]);
+  const [opcoesTamanhos, setOpcoesTamanhos] = useState([]);
 
   async function fetchProdutos() {
     try {
       setCarregando(true);
       const { data, error } = await supabase
         .from('produtos') 
-        .select('id, nome, preco_varejo, foto_url, tag, variacoes')
+        .select('id, nome, preco_varejo, foto_url, tag, variacoes, categoria')
         .order('criado_em', { ascending: false });
 
       if (error) throw error;
-      setProdutos(data || []);
+      
+      const prods = data || [];
+      setProdutos(prods);
+
+      // Mapeia categorias existentes
+      const catExistentes = [...new Set(prods.map(p => p.categoria).filter(Boolean))];
+      setCategoriasAtivas(catExistentes.sort());
+
+      // Mapeia Cores e Tamanhos que POSSUEM ESTOQUE para montar os filtros
+      const coresSet = new Set();
+      const tamanhosSet = new Set();
+      
+      prods.forEach(p => {
+        let vars = [];
+        try { vars = typeof p.variacoes === 'string' ? JSON.parse(p.variacoes) : (p.variacoes || []); } catch(e){}
+        
+        vars.forEach(v => {
+          if (v.quantidade > 0) {
+            if (v.cor) coresSet.add(v.cor);
+            if (v.tamanho) tamanhosSet.add(v.tamanho);
+          }
+        });
+      });
+
+      setOpcoesCores([...coresSet].sort());
+      setOpcoesTamanhos(['PP', 'P', 'M', 'G', 'GG'].filter(t => tamanhosSet.has(t))); // Mantém a ordem lógica dos tamanhos
+
     } catch (error) {
       console.error('Erro ao carregar vitrine:', error.message);
     } finally {
@@ -285,11 +318,57 @@ export default function LojaOnline({ onAdicionarProduto }) {
     fetchProdutos();
   }, []);
 
+  const limparFiltrosBusca = () => {
+    setTermoBusca('');
+    setCorFiltro('');
+    setTamanhoFiltro('');
+  };
+
+  // 🌟 LÓGICA DO FILTRO INTELIGENTE CRUZADO 🌟
+  const produtosFiltrados = produtos.filter(p => {
+    // 1. Filtro de Categoria
+    if (categoriaSelecionada !== 'Todas' && p.categoria !== categoriaSelecionada) return false;
+
+    // 2. Filtro de Texto (Nome ou Tag)
+    if (termoBusca) {
+      const termo = termoBusca.toLowerCase().trim();
+      const nomeMatch = p.nome.toLowerCase().includes(termo);
+      const tagMatch = p.tag && p.tag.toLowerCase().includes(termo);
+      if (!nomeMatch && !tagMatch) return false;
+    }
+
+    // Processa variações do produto para os próximos filtros
+    let vars = [];
+    try { vars = typeof p.variacoes === 'string' ? JSON.parse(p.variacoes) : (p.variacoes || []); } catch(e){}
+
+    // 3. Filtro de Cor e Tamanho exato
+    if (corFiltro || tamanhoFiltro) {
+      let temEstoqueRequerido = false;
+
+      // Se filtrou os DOIS (Cor e Tamanho), precisa ter a combinação exata em estoque
+      if (corFiltro && tamanhoFiltro) {
+        temEstoqueRequerido = vars.some(v => v.cor === corFiltro && v.tamanho === tamanhoFiltro && v.quantidade > 0);
+      } 
+      // Se filtrou SÓ COR
+      else if (corFiltro && !tamanhoFiltro) {
+        temEstoqueRequerido = vars.some(v => v.cor === corFiltro && v.quantidade > 0);
+      } 
+      // Se filtrou SÓ TAMANHO
+      else if (!corFiltro && tamanhoFiltro) {
+        temEstoqueRequerido = vars.some(v => v.tamanho === tamanhoFiltro && v.quantidade > 0);
+      }
+
+      if (!temEstoqueRequerido) return false;
+    }
+
+    return true;
+  });
+
   return (
     <div className="text-left animate-fade-in pb-16">
       
-      {/* 🌟 HEADER PREMIUM / BANNER MINIMALISTA 🌟 */}
-      <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-center py-16 md:py-24 px-6 mb-12 md:mb-20 shadow-2xl">
+      {/* 🌟 BANNER 🌟 */}
+      <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-center py-16 md:py-24 px-6 mb-8 shadow-2xl">
         <div className="absolute top-0 left-0 w-full h-full overflow-hidden opacity-30 pointer-events-none">
           <div className="absolute -top-32 -left-32 w-96 h-96 bg-lua-rose-dark rounded-full mix-blend-screen filter blur-[100px] opacity-60"></div>
           <div className="absolute top-20 -right-20 w-80 h-80 bg-lua-gold rounded-full mix-blend-screen filter blur-[100px] opacity-40"></div>
@@ -301,6 +380,91 @@ export default function LojaOnline({ onAdicionarProduto }) {
           </h2>
         </div>
       </div>
+
+      {/* 🌟 FILTROS DE CATEGORIA (BOTÕES) 🌟 */}
+      {!carregando && categoriasAtivas.length > 0 && (
+        <div className="flex flex-wrap justify-center gap-2 mb-6 px-2">
+           <button
+             onClick={() => setCategoriaSelecionada('Todas')}
+             className={`px-5 py-2 rounded-full text-xs font-bold tracking-widest uppercase transition-all duration-300 shadow-sm ${
+               categoriaSelecionada === 'Todas' 
+               ? 'bg-slate-900 text-white' 
+               : 'bg-white text-slate-500 hover:text-slate-900 border border-slate-200 hover:border-slate-400'
+             }`}
+           >
+             Tudo
+           </button>
+           
+           {categoriasAtivas.map(cat => (
+             <button
+               key={cat}
+               onClick={() => setCategoriaSelecionada(cat)}
+               className={`px-5 py-2 rounded-full text-xs font-bold tracking-widest uppercase transition-all duration-300 shadow-sm ${
+                 categoriaSelecionada === cat 
+                 ? 'bg-lua-rose-dark text-white' 
+                 : 'bg-white text-slate-500 hover:text-lua-rose-dark border border-slate-200 hover:border-lua-rose-light'
+               }`}
+             >
+               {cat}
+             </button>
+           ))}
+        </div>
+      )}
+
+      {/* 🌟 BARRA DE BUSCA INTELIGENTE E FILTROS COMPLEMENTARES 🌟 */}
+      {!carregando && produtos.length > 0 && (
+        <div className="max-w-4xl mx-auto mb-10 md:mb-14 px-4 relative z-20">
+          <div className="bg-white p-2.5 md:p-3 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col md:flex-row gap-3">
+            
+            {/* Campo de Texto */}
+            <div className="flex-1 relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+              <input 
+                type="text" 
+                placeholder="Buscar modelo, tecido..." 
+                value={termoBusca}
+                onChange={(e) => setTermoBusca(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-100 hover:border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-lua-rose-dark/20 focus:bg-white transition-all text-slate-700"
+              />
+            </div>
+
+            {/* Seletor de Cor */}
+            <select 
+              value={corFiltro} 
+              onChange={(e) => setCorFiltro(e.target.value)}
+              className="md:w-40 bg-slate-50 border border-slate-100 hover:border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-lua-rose-dark/20 cursor-pointer"
+            >
+              <option value="">Qualquer Cor</option>
+              {opcoesCores.map(cor => <option key={cor} value={cor}>{cor}</option>)}
+            </select>
+
+            {/* Seletor de Tamanho */}
+            <select 
+              value={tamanhoFiltro} 
+              onChange={(e) => setTamanhoFiltro(e.target.value)}
+              className="md:w-40 bg-slate-50 border border-slate-100 hover:border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-lua-rose-dark/20 cursor-pointer"
+            >
+              <option value="">Qualquer Tam.</option>
+              {opcoesTamanhos.map(tam => <option key={tam} value={tam}>Tamanho {tam}</option>)}
+            </select>
+
+            {/* Botão Limpar Filtros (aparece só se tiver algo filtrado) */}
+            {(termoBusca || corFiltro || tamanhoFiltro) && (
+              <button 
+                onClick={limparFiltrosBusca}
+                className="bg-rose-50 text-rose-500 hover:bg-rose-100 hover:text-rose-600 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shrink-0"
+              >
+                Limpar
+              </button>
+            )}
+          </div>
+          
+          {/* Contador discreto de resultados */}
+          <div className="text-right mt-2 text-[10px] uppercase tracking-widest text-slate-400 font-bold px-2">
+             Exibindo {produtosFiltrados.length} {produtosFiltrados.length === 1 ? 'modelo' : 'modelos'} disponíveis
+          </div>
+        </div>
+      )}
 
       {/* GRID DE PRODUTOS */}
       {carregando ? (
@@ -316,15 +480,25 @@ export default function LojaOnline({ onAdicionarProduto }) {
             </div>
           ))}
         </div>
-      ) : produtos.length === 0 ? (
+      ) : produtosFiltrados.length === 0 ? (
         <div className="text-center py-20 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm mx-4 md:mx-0">
           <span className="text-5xl block mb-6">✨</span>
-          <h3 className="text-2xl font-serif font-medium text-slate-900 mb-3">Vitrine em preparação</h3>
-          <p className="text-slate-500 font-light">Nossos estilistas estão organizando as novas peças. Volte em breve!</p>
+          <h3 className="text-2xl font-serif font-medium text-slate-900 mb-3">Nenhuma peça encontrada</h3>
+          <p className="text-slate-500 font-light max-w-sm mx-auto">
+            Não temos pijamas com esta exata combinação disponíveis no estoque neste momento.
+          </p>
+          {(categoriaSelecionada !== 'Todas' || termoBusca || corFiltro || tamanhoFiltro) && (
+             <button 
+               onClick={() => { setCategoriaSelecionada('Todas'); limparFiltrosBusca(); }} 
+               className="mt-6 text-white bg-slate-900 px-6 py-2.5 rounded-full font-bold text-xs uppercase tracking-widest shadow-md hover:bg-lua-rose-dark transition-colors"
+             >
+               Ver toda a coleção
+             </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 md:gap-10">
-          {produtos.map((prod) => (
+          {produtosFiltrados.map((prod) => (
             <ProdutoVitrine 
               key={prod.id} 
               produto={prod} 
