@@ -8,9 +8,9 @@ export default function Estoque() {
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
-  
+
   const [abaAtual, setAbaAtual] = useState('catalogo'); 
-  
+
   // -------------------------------------------------------------------
   // ESTADOS DO FORMULÁRIO (PRODUTO BASE)
   // -------------------------------------------------------------------
@@ -36,7 +36,7 @@ export default function Estoque() {
   // -------------------------------------------------------------------
   const [variacoesInput, setVariacoesInput] = useState([]);
   const [novaCor, setNovaCor] = useState('');
-  
+
   const [grade, setGrade] = useState({
     PP: { qtd: '', acrescimo: '' },
     P:  { qtd: '', acrescimo: '' },
@@ -176,24 +176,30 @@ export default function Estoque() {
     setVariacoesInput(variacoesInput.filter(v => v.id_local !== idLocalToRemove));
   };
 
-  // 🌟 FORMULÁRIO DE PRODUTO 🌟
-  const iniciarEdicao = (produto) => {
-    setEditandoId(produto.id);
-    setNome(produto.nome);
+  // 🌟 FORMULÁRIO DE PRODUTO (EDITAR E DUPLICAR) 🌟
+  const iniciarEdicao = (produto, isDuplicacao = false) => {
+    // Se for duplicação, deixamos o editandoId NULO, para o sistema salvar como um NOVO produto
+    setEditandoId(isDuplicacao ? null : produto.id);
+    
+    // Adiciona o sufixo "Cópia" se estiver duplicando
+    setNome(isDuplicacao ? `${produto.nome} (Cópia)` : produto.nome);
+    
     setPrecoVarejo(produto.preco_varejo || '');
     setPrecoAtacado(produto.preco_atacado || '');
     setCategoria(produto.categoria || '');
     setTag(produto.tag || '');
-    
+
     try {
       const varsArray = typeof produto.variacoes === 'string' ? JSON.parse(produto.variacoes) : (produto.variacoes || []);
+      // Gera novos IDs locais para a cópia também
       const varsComId = varsArray.map(v => ({ ...v, id_local: Math.random().toString() }));
       setVariacoesInput(varsComId);
     } catch (e) {
       setVariacoesInput([]);
     }
 
-    if (produto.foto_url) {
+    // Se for edição, puxa as fotos. Se for duplicação, limpa as fotos (pois geralmente é outra estampa)
+    if (!isDuplicacao && produto.foto_url) {
       try {
         const fotosParsed = JSON.parse(produto.foto_url);
         setFotosExistentes(Array.isArray(fotosParsed) ? fotosParsed : [produto.foto_url]);
@@ -203,10 +209,10 @@ export default function Estoque() {
     } else {
       setFotosExistentes([]);
     }
-    
+
     setFotosArquivos([]);
     if(document.getElementById('input-foto')) document.getElementById('input-foto').value = '';
-    
+
     setAbaAtual('cadastro');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -327,20 +333,17 @@ export default function Estoque() {
     } catch(e) {}
     return fotoString; 
   };
-  
+
   // Função para formatar o ID como um código numérico (ex: REF-00150)
   const formatarCodigoRef = (id) => {
     if (!id) return '';
-    // Se o ID for numérico puro (ex: 12)
     if (Number.isInteger(Number(id))) {
       return `REF-${String(id).padStart(5, '0')}`;
     }
-    // Se o ID for UUID (texto longo), pega só os números dele
     const numeros = String(id).replace(/\D/g, '');
     if (numeros.length >= 5) {
       return `REF-${numeros.substring(0, 5)}`;
     }
-    // Fallback: pega os 5 primeiros caracteres e deixa maiúsculo
     return `REF-${String(id).substring(0, 5).toUpperCase()}`;
   };
 
@@ -349,7 +352,7 @@ export default function Estoque() {
 
   return (
     <div className="pb-16 animate-fade-in relative">
-      
+
       {/* 🌟 MODAL GERENCIADOR DE CATEGORIAS DE PRODUTO 🌟 */}
       {modalCatAberto && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -358,7 +361,7 @@ export default function Estoque() {
               <h3 className="font-serif font-bold text-lg text-slate-800">Categorias de Produtos</h3>
               <button onClick={fecharModalCategoria} className="text-slate-400 hover:text-slate-700 transition-colors text-xl">✕</button>
             </div>
-            
+
             <div className="p-5 flex-1 overflow-y-auto bg-slate-50/50">
               <form onSubmit={handleSalvarCategoria} className="flex gap-2 mb-6">
                 <input 
@@ -390,7 +393,7 @@ export default function Estoque() {
                 ))}
               </div>
             </div>
-            
+
             <div className="p-4 border-t border-slate-100 bg-white">
                <button onClick={fecharModalCategoria} className="w-full bg-slate-100 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-200 transition-colors text-sm">
                  Fechar Painel
@@ -432,7 +435,7 @@ export default function Estoque() {
       {/* ================================================================= */}
       {abaAtual === 'catalogo' && (
         <div className="space-y-6 md:space-y-8 animate-fade-in">
-          
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
             <StatCard label="Total de Peças" value={carregando ? "..." : `${totalPecas} unidades`} statusText="Em todas as variações" statusType="neutral"/>
             <StatCard label="Valor de Venda" value={carregando ? "..." : `R$ ${custoPatrimonial.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} statusText="Patrimônio ativo (Varejo)" statusType="gold"/>
@@ -446,9 +449,9 @@ export default function Estoque() {
                 + Novo Produto
               </Button>
             </div>
-            
+
             <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0 pb-2">
-              <table className="w-full text-left text-sm text-slate-600 min-w-[700px]">
+              <table className="w-full text-left text-sm text-slate-600 min-w-[800px]">
                 <thead>
                   <tr className="bg-lua-cream border-b border-lua-rose-dark/10 text-slate-500 text-xs uppercase whitespace-nowrap">
                     <th className="p-3 rounded-tl-lg">Produto Base</th>
@@ -486,7 +489,6 @@ export default function Estoque() {
                               <div className="w-14 h-14 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400 text-2xl">📸</div>
                             )}
                             <div className="flex flex-col justify-center">
-                              {/* 🌟 CÓDIGO DO PRODUTO AQUI 🌟 */}
                               <span className="text-[10px] font-mono font-bold text-slate-400 mb-0.5 tracking-widest uppercase">
                                 {formatarCodigoRef(item.id)}
                               </span>
@@ -495,16 +497,16 @@ export default function Estoque() {
                               <span className="text-[11px] text-slate-500 font-medium bg-slate-100 px-2 py-0.5 rounded-full w-fit">Estoque: <b className="text-slate-700">{calcularTotalEstoqueProduto(variacoesDoItem)}</b> un</span>
                             </div>
                           </td>
-                          
+
                           <td className="p-4 text-xs whitespace-nowrap align-middle">
                              <div className="font-bold text-slate-800 text-sm">R$ {Number(item.preco_varejo).toFixed(2)}</div>
                              <div className="text-slate-400 font-medium mt-0.5">R$ {Number(item.preco_atacado).toFixed(2)}</div>
                           </td>
-                          
+
                           <td className="p-4 align-middle">
                              <div className="flex flex-wrap gap-1.5 max-w-[350px]">
                                {variacoesDoItem.length === 0 ? <span className="text-[10px] text-rose-400 italic bg-rose-50 px-2 py-1 rounded">Sem variações</span> : null}
-                               
+
                                {variacoesDoItem.map((v, i) => (
                                  <span key={i} className={`text-[10px] px-2 py-1.5 rounded-md border flex items-center gap-1.5 shadow-xs ${
                                    v.quantidade <= 2 ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-white border-slate-200 text-slate-700'
@@ -516,10 +518,15 @@ export default function Estoque() {
                                ))}
                              </div>
                           </td>
-                          
+
                           <td className="p-4 text-right whitespace-nowrap align-middle">
                              <div className="flex justify-end gap-2">
-                                <button onClick={() => iniciarEdicao(item)} className="text-xs text-blue-600 hover:text-white font-medium bg-blue-50 hover:bg-blue-600 px-3 py-2 rounded-lg transition-all border border-blue-100 hover:border-blue-600 shadow-sm">
+                                {/* 🌟 NOVO BOTÃO: DUPLICAR 🌟 */}
+                                <button onClick={() => iniciarEdicao(item, true)} title="Duplicar Produto" className="text-xs text-slate-600 hover:text-slate-800 font-medium bg-white hover:bg-slate-100 px-3 py-2 rounded-lg transition-all border border-slate-200 shadow-sm flex items-center gap-1">
+                                  📑 <span className="hidden sm:inline">Duplicar</span>
+                                </button>
+                                
+                                <button onClick={() => iniciarEdicao(item, false)} className="text-xs text-blue-600 hover:text-white font-medium bg-blue-50 hover:bg-blue-600 px-3 py-2 rounded-lg transition-all border border-blue-100 hover:border-blue-600 shadow-sm">
                                   Editar
                                 </button>
                                 <button onClick={() => handleDeletar(item.id)} className="text-xs text-rose-500 hover:text-white font-medium bg-rose-50 hover:bg-rose-500 px-3 py-2 rounded-lg transition-all border border-rose-100 hover:border-rose-500 shadow-sm">
@@ -549,27 +556,27 @@ export default function Estoque() {
                  {editandoId ? (
                    <>
                      Editando Produto 
-                     {/* 🌟 CÓDIGO NO CABEÇALHO DA EDIÇÃO 🌟 */}
                      <span className="bg-slate-100 text-slate-500 font-mono text-sm px-3 py-1 rounded-lg border border-slate-200">
                        {formatarCodigoRef(editandoId)}
                      </span>
                    </>
                  ) : 'Registrar Novo Produto'}
                </h3>
-               {editandoId && (
+               {/* Mudamos o texto do botão de cancelar se estiver apenas duplicando e não editando algo já salvo */}
+               {(editandoId || nome.includes('(Cópia)')) && (
                    <button onClick={cancelarEdicao} className="text-xs text-rose-500 hover:text-rose-700 font-bold uppercase tracking-wider bg-rose-50 px-3 py-1.5 rounded-lg">
-                       Cancelar Edição
+                       Cancelar
                    </button>
                )}
             </div>
-            
+
             <form onSubmit={handleCadastrar} className="space-y-6">
-              
+
               <div className="p-5 bg-slate-50/50 border border-slate-200 rounded-xl space-y-5">
                 <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-2">
                   <span>1.</span> Informações Básicas
                 </h4>
-                
+
                 <div>
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5">Nome do Modelo</label>
                   <input type="text" placeholder="ex: Pijama Americano Satin" value={nome} onChange={(e) => setNome(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 focus:outline-none focus:border-lua-rose-dark focus:ring-1 focus:ring-lua-rose-dark transition-all shadow-sm" required />
@@ -648,7 +655,7 @@ export default function Estoque() {
                      * Para repor estoque, digite a <b>mesma cor</b> e a nova quantidade. Elas serão somadas.
                    </p>
                 </div>
-                
+
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
                   <div>
                     <label className="text-xs font-bold text-slate-700 block mb-1.5">Cor da Peça</label>
@@ -703,13 +710,14 @@ export default function Estoque() {
               </div>
 
               <div className="pt-4 flex gap-3">
-                {editandoId && (
+                {/* O botão cancelar agora aparece se estiver editando OU se for uma cópia sendo gerada */}
+                {(editandoId || nome.includes('(Cópia)')) && (
                   <button type="button" onClick={cancelarEdicao} className="w-1/3 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3.5 rounded-xl text-sm font-bold uppercase tracking-wider transition-colors">
                     Cancelar
                   </button>
                 )}
-                <button type="submit" disabled={salvando} className={`${editandoId ? 'w-2/3' : 'w-full'} bg-lua-rose-dark text-white py-3.5 rounded-xl text-sm font-bold uppercase tracking-widest hover:bg-lua-rose transition-all shadow-md disabled:opacity-70`}>
-                  {salvando ? '⏳ Salvando Alterações...' : (editandoId ? 'Concluir Edição' : 'Cadastrar Produto Definitivo')}
+                <button type="submit" disabled={salvando} className={`${(editandoId || nome.includes('(Cópia)')) ? 'w-2/3' : 'w-full'} bg-lua-rose-dark text-white py-3.5 rounded-xl text-sm font-bold uppercase tracking-widest hover:bg-lua-rose transition-all shadow-md disabled:opacity-70`}>
+                  {salvando ? '⏳ Salvando...' : (editandoId ? 'Concluir Edição' : 'Cadastrar Produto')}
                 </button>
               </div>
             </form>
