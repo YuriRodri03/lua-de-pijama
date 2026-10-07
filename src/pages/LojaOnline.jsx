@@ -107,7 +107,8 @@ function ProdutoVitrine({ produto, onAdicionarProduto, isAtacado }) {
 
   return (
     <>
-      <div className={`flex flex-col relative bg-white rounded-3xl overflow-hidden border border-slate-100 ${modalAberto ? 'z-40' : 'group shadow-[0_2px_15px_-3px_rgba(0,0,0,0.04)] hover:shadow-[0_10px_40px_-10px_rgba(0,0,0,0.12)] hover:-translate-y-1 transition-all duration-500'}`}>
+      {/* 🌟 CARTÃO COM PROPORÇÕES RESPONSIVAS PARA MOBILE 🌟 */}
+      <div className={`flex flex-col relative bg-white rounded-2xl md:rounded-3xl overflow-hidden border border-slate-100 ${modalAberto ? 'z-40' : 'group shadow-[0_2px_15px_-3px_rgba(0,0,0,0.04)] hover:shadow-[0_10px_40px_-10px_rgba(0,0,0,0.12)] hover:-translate-y-1 transition-all duration-500'}`}>
         
         <div className="relative aspect-[3/4] bg-white overflow-hidden group/galeria border-b border-slate-50 cursor-pointer" onClick={() => setModalAberto(true)}>
           {galeriaFotos.length > 0 ? (
@@ -117,7 +118,8 @@ function ProdutoVitrine({ produto, onAdicionarProduto, isAtacado }) {
                   key={idx}
                   src={foto} 
                   alt={`${produto.nome} - ângulo ${idx + 1}`} 
-                  className={`absolute inset-0 w-full h-full object-contain object-center p-4 transition-all duration-700 ease-in-out group-hover:scale-105 
+                  // Margem (p) menor no mobile para a foto ficar maior
+                  className={`absolute inset-0 w-full h-full object-contain object-center p-2 md:p-4 transition-all duration-700 ease-in-out group-hover:scale-105 
                     ${fotoIndex === idx ? 'opacity-100 z-10' : 'opacity-0 z-0 scale-100'} 
                     ${estaEsgotado ? 'grayscale opacity-60' : ''}
                   `}
@@ -126,11 +128,11 @@ function ProdutoVitrine({ produto, onAdicionarProduto, isAtacado }) {
 
               {temMaisDeUmaFoto && (
                 <>
-                  <button onClick={(e) => { e.stopPropagation(); fotoAnterior(e); }} className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-slate-900/10 backdrop-blur-md text-slate-800 shadow-sm opacity-100 md:opacity-0 md:group-hover/galeria:opacity-100 transition-opacity hover:bg-slate-900/20 z-20">❮</button>
-                  <button onClick={(e) => { e.stopPropagation(); proximaFoto(e); }} className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-slate-900/10 backdrop-blur-md text-slate-800 shadow-sm opacity-100 md:opacity-0 md:group-hover/galeria:opacity-100 transition-opacity hover:bg-slate-900/20 z-20">❯</button>
-                  <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5 z-20">
+                  <button onClick={(e) => { e.stopPropagation(); fotoAnterior(e); }} className="absolute left-1 md:left-2 top-1/2 -translate-y-1/2 w-6 h-6 md:w-8 md:h-8 flex items-center justify-center rounded-full bg-slate-900/10 backdrop-blur-md text-slate-800 shadow-sm opacity-100 md:opacity-0 md:group-hover/galeria:opacity-100 transition-opacity hover:bg-slate-900/20 z-20">❮</button>
+                  <button onClick={(e) => { e.stopPropagation(); proximaFoto(e); }} className="absolute right-1 md:right-2 top-1/2 -translate-y-1/2 w-6 h-6 md:w-8 md:h-8 flex items-center justify-center rounded-full bg-slate-900/10 backdrop-blur-md text-slate-800 shadow-sm opacity-100 md:opacity-0 md:group-hover/galeria:opacity-100 transition-opacity hover:bg-slate-900/20 z-20">❯</button>
+                  <div className="absolute bottom-2 md:bottom-3 left-0 right-0 flex justify-center gap-1 md:gap-1.5 z-20">
                     {galeriaFotos.map((_, idx) => (
-                      <span key={idx} className={`h-1.5 rounded-full transition-all duration-300 ${fotoIndex === idx ? 'w-4 bg-slate-800 shadow-sm' : 'w-1.5 bg-slate-300'}`} />
+                      <span key={idx} className={`h-1 md:h-1.5 rounded-full transition-all duration-300 ${fotoIndex === idx ? 'w-3 md:w-4 bg-slate-800 shadow-sm' : 'w-1 md:w-1.5 bg-slate-300'}`} />
                     ))}
                   </div>
                 </>
@@ -138,54 +140,55 @@ function ProdutoVitrine({ produto, onAdicionarProduto, isAtacado }) {
             </>
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center text-slate-300 bg-lua-cream/30 z-10 relative">
-              <span className="text-4xl mb-2">✨</span>
-              <span className="text-xs uppercase tracking-widest font-semibold">Sem Imagem</span>
+              <span className="text-2xl md:text-4xl mb-1 md:mb-2">✨</span>
+              <span className="text-[9px] md:text-xs uppercase tracking-widest font-semibold">Sem Imagem</span>
             </div>
           )}
 
-          <div className="absolute top-4 left-4 flex flex-col gap-2 z-20">
+          <div className="absolute top-2 left-2 md:top-4 md:left-4 flex flex-col gap-1 md:gap-2 z-20">
             {estaEsgotado ? (
-              <span className="bg-slate-900/90 backdrop-blur-md text-white text-[9px] font-bold uppercase tracking-widest px-4 py-1.5 rounded-full">Esgotado</span>
+              <span className="bg-slate-900/90 backdrop-blur-md text-white text-[7px] md:text-[9px] font-bold uppercase tracking-widest px-2 py-1 md:px-4 md:py-1.5 rounded-full">Esgotado</span>
             ) : (
               produto.tag && (
-                <span className="bg-white/90 backdrop-blur-md text-slate-900 text-[9px] font-bold uppercase tracking-widest px-4 py-1.5 rounded-full shadow-sm border border-slate-200">{produto.tag}</span>
+                <span className="bg-white/90 backdrop-blur-md text-slate-900 text-[7px] md:text-[9px] font-bold uppercase tracking-widest px-2 py-1 md:px-4 md:py-1.5 rounded-full shadow-sm border border-slate-200">{produto.tag}</span>
               )
             )}
             {!estaEsgotado && isAtacado && produto.preco_atacado > 0 && (
-              <span className="bg-slate-800/90 backdrop-blur-md text-white text-[9px] font-bold uppercase tracking-widest px-4 py-1.5 rounded-full shadow-sm border border-slate-700">Atacado</span>
+              <span className="bg-slate-800/90 backdrop-blur-md text-white text-[7px] md:text-[9px] font-bold uppercase tracking-widest px-2 py-1 md:px-4 md:py-1.5 rounded-full shadow-sm border border-slate-700">Atacado</span>
             )}
           </div>
         </div>
 
-        <div className="p-5 md:p-6 flex flex-col flex-grow bg-white z-30 relative">
-          <div className="mb-4">
-            {produto.categoria && <span className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block mb-2">{produto.categoria}</span>}
-            <h3 onClick={() => setModalAberto(true)} className="font-serif font-medium text-slate-900 text-lg md:text-xl leading-snug mb-1.5 cursor-pointer hover:text-lua-rose-dark transition-colors">
+        {/* Textos e Botões compactados para o Mobile */}
+        <div className="p-3 md:p-6 flex flex-col flex-grow bg-white z-30 relative">
+          <div className="mb-2 md:mb-4">
+            {produto.categoria && <span className="text-[8px] md:text-[10px] uppercase tracking-widest text-slate-400 font-bold block mb-1 md:mb-2">{produto.categoria}</span>}
+            <h3 onClick={() => setModalAberto(true)} className="font-serif font-medium text-slate-900 text-sm md:text-xl leading-tight md:leading-snug mb-1 md:mb-1.5 cursor-pointer hover:text-lua-rose-dark transition-colors line-clamp-2">
               {produto.nome}
             </h3>
             
-            <div className="flex items-end gap-2">
-              <span className={`font-light text-lg transition-all duration-300 ${isAtacado ? 'text-slate-800 font-medium' : 'text-slate-600'}`}>
+            <div className="flex items-end gap-1 md:gap-2 flex-wrap">
+              <span className={`font-medium md:font-light text-sm md:text-lg transition-all duration-300 ${isAtacado ? 'text-slate-800' : 'text-slate-600'}`}>
                 {formatarMoeda(precoAtual)}
               </span>
               {isAtacado && produto.preco_atacado > 0 && (
-                <span className="text-[10px] text-slate-400 line-through mb-1 border-l border-slate-300 pl-2">Varejo: {formatarMoeda(produto.preco_varejo)}</span>
+                <span className="text-[8px] md:text-[10px] text-slate-400 line-through mb-0.5 border-l border-slate-300 pl-1 md:pl-2">Varejo: {formatarMoeda(produto.preco_varejo)}</span>
               )}
             </div>
           </div>
 
           {!estaEsgotado ? (
-            <div className="space-y-5 mb-6 flex-grow">
+            <div className="space-y-3 md:space-y-5 mb-4 md:mb-6 flex-grow">
               {coresDisponiveis.length > 0 && (
                 <div>
-                  <span className="text-[9px] uppercase tracking-widest font-bold text-slate-400 block mb-2.5">Cor</span>
-                  <div className="flex flex-wrap gap-2">
+                  <span className="text-[8px] md:text-[9px] uppercase tracking-widest font-bold text-slate-400 block mb-1.5 md:mb-2.5">Cor</span>
+                  <div className="flex flex-wrap gap-1 md:gap-2">
                     {coresDisponiveis.map(cor => (
                       <button
                         key={cor}
                         onClick={() => handleSelecionarCor(cor)}
-                        className={`text-[11px] font-medium px-4 py-1.5 rounded-full transition-all duration-300 ${
-                          corSelecionada === cor ? 'bg-slate-900 text-white shadow-md ring-2 ring-slate-900 ring-offset-2' : 'bg-slate-50 text-slate-600 border border-slate-200 hover:border-slate-400'
+                        className={`text-[9px] md:text-[11px] font-bold md:font-medium px-2.5 py-1 md:px-4 md:py-1.5 rounded-full transition-all duration-300 ${
+                          corSelecionada === cor ? 'bg-slate-900 text-white shadow-md ring-1 md:ring-2 ring-slate-900 ring-offset-1 md:ring-offset-2' : 'bg-slate-50 text-slate-600 border border-slate-200 hover:border-slate-400'
                         }`}
                       >
                         {cor}
@@ -196,11 +199,11 @@ function ProdutoVitrine({ produto, onAdicionarProduto, isAtacado }) {
               )}
 
               <div className={`transition-all duration-500 ${corSelecionada ? 'opacity-100 h-auto' : 'opacity-0 h-0 overflow-hidden'}`}>
-                <div className="flex items-end gap-2 mb-2.5">
-                   <span className="text-[9px] uppercase tracking-widest font-bold text-slate-400">Tamanho</span>
-                   {tamanhosDaCor.some(v => v.preco_adicional > 0) && <span className="text-[9px] text-lua-rose-dark italic ml-auto">*Valores podem variar</span>}
+                <div className="flex items-end gap-1 md:gap-2 mb-1.5 md:mb-2.5">
+                   <span className="text-[8px] md:text-[9px] uppercase tracking-widest font-bold text-slate-400">Tamanho</span>
+                   {tamanhosDaCor.some(v => v.preco_adicional > 0) && <span className="text-[7px] md:text-[9px] text-lua-rose-dark italic ml-auto">*Variam</span>}
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-1.5 md:gap-2">
                   {tamanhosDaCor.map((varItem, i) => {
                     const semEstoque = varItem.quantidade <= 0;
                     const selecionado = tamanhoSelecionado === varItem.tamanho;
@@ -209,12 +212,12 @@ function ProdutoVitrine({ produto, onAdicionarProduto, isAtacado }) {
                         key={i}
                         disabled={semEstoque}
                         onClick={() => setTamanhoSelecionado(varItem.tamanho)}
-                        className={`text-xs font-medium w-10 h-10 rounded-full border transition-all duration-300 flex items-center justify-center relative
+                        className={`text-[10px] md:text-xs font-bold md:font-medium w-7 h-7 md:w-10 md:h-10 rounded-full border transition-all duration-300 flex items-center justify-center relative
                           ${semEstoque ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed line-through' : selecionado ? 'bg-lua-rose-dark text-white border-lua-rose-dark shadow-md scale-105' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-800 hover:text-slate-900'}
                         `}
                       >
                         {varItem.tamanho}
-                        {!semEstoque && varItem.preco_adicional > 0 && !selecionado && <span className="absolute top-0 right-0 w-2 h-2 bg-lua-gold rounded-full border border-white"></span>}
+                        {!semEstoque && varItem.preco_adicional > 0 && !selecionado && <span className="absolute top-0 right-0 w-1.5 h-1.5 md:w-2 md:h-2 bg-lua-gold rounded-full border border-white"></span>}
                       </button>
                     );
                   })}
@@ -222,23 +225,23 @@ function ProdutoVitrine({ produto, onAdicionarProduto, isAtacado }) {
               </div>
             </div>
           ) : (
-            <div className="flex-grow flex items-center justify-center pb-6 text-sm text-slate-400 font-light italic">
-              Novas peças em produção.
+            <div className="flex-grow flex items-center justify-center pb-4 md:pb-6 text-xs md:text-sm text-slate-400 font-light italic text-center">
+              Em produção.
             </div>
           )}
 
           <button 
             disabled={estaEsgotado || !corSelecionada || !tamanhoSelecionado}
             onClick={handleComprar}
-            className="w-full mt-auto py-3.5 rounded-xl text-[11px] font-bold uppercase tracking-[0.2em] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed
-              bg-slate-900 hover:bg-lua-rose-dark text-white shadow-md hover:shadow-lg disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none border border-transparent disabled:border-slate-200"
+            className="w-full mt-auto py-2 md:py-3.5 rounded-lg md:rounded-xl text-[9px] md:text-[11px] font-bold uppercase tracking-[0.1em] md:tracking-[0.2em] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed
+              bg-slate-900 hover:bg-lua-rose-dark text-white shadow-sm hover:shadow-lg disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none border border-transparent disabled:border-slate-200"
           >
-            {estaEsgotado ? 'Esgotado' : (!corSelecionada || !tamanhoSelecionado) ? 'Selecione as opções' : 'Adicionar à Sacola'}
+            {estaEsgotado ? 'Esgotado' : (!corSelecionada || !tamanhoSelecionado) ? 'Opções' : 'Adicionar'}
           </button>
         </div>
       </div>
 
-      {/* MODAL DE DETALHES */}
+      {/* 🌟 MODAL DE DETALHES (QUICK VIEW) Permanece Inalterado, já é responsivo 🌟 */}
       {modalAberto && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6" style={{ margin: 0 }}>
           <div className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm transition-opacity" onClick={() => setModalAberto(false)}></div>
@@ -436,7 +439,6 @@ export default function LojaOnline({ onAdicionarProduto }) {
     setTamanhoFiltro('');
   };
 
-  // 🌟 FUNÇÕES DO MODAL DE ACESSO LOJISTA 🌟
   const handleToggleAtacado = () => {
     if (isAtacado) {
       setIsAtacado(false);
@@ -494,7 +496,7 @@ export default function LojaOnline({ onAdicionarProduto }) {
   return (
     <div className="text-left animate-fade-in pb-16 relative">
       
-      {/* 🌟 MODAL BONITINHO PARA A SENHA DO ATACADO 🌟 */}
+      {/* MODAL DE SENHA DO ATACADO */}
       {modalSenhaAberto && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setModalSenhaAberto(false)}></div>
@@ -541,7 +543,7 @@ export default function LojaOnline({ onAdicionarProduto }) {
       )}
 
       {/* BOTÃO SECRETO DE ACESSO ATACADO NO TOPO */}
-      <div className="absolute top-4 right-6 md:right-10 z-50">
+      <div className="absolute top-4 right-4 md:right-10 z-50">
         <button 
           onClick={handleToggleAtacado}
           className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] uppercase tracking-widest font-bold border shadow-sm transition-all backdrop-blur-md ${
@@ -571,7 +573,7 @@ export default function LojaOnline({ onAdicionarProduto }) {
         <div className="flex flex-wrap justify-center gap-2 mb-6 px-2">
            <button
              onClick={() => setCategoriaSelecionada('Todas')}
-             className={`px-5 py-2 rounded-full text-xs font-bold tracking-widest uppercase transition-all duration-300 shadow-sm ${
+             className={`px-4 md:px-5 py-2 rounded-full text-[10px] md:text-xs font-bold tracking-widest uppercase transition-all duration-300 shadow-sm ${
                categoriaSelecionada === 'Todas' ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 hover:text-slate-900 border border-slate-200 hover:border-slate-400'
              }`}
            >
@@ -582,7 +584,7 @@ export default function LojaOnline({ onAdicionarProduto }) {
              <button
                key={cat}
                onClick={() => setCategoriaSelecionada(cat)}
-               className={`px-5 py-2 rounded-full text-xs font-bold tracking-widest uppercase transition-all duration-300 shadow-sm ${
+               className={`px-4 md:px-5 py-2 rounded-full text-[10px] md:text-xs font-bold tracking-widest uppercase transition-all duration-300 shadow-sm ${
                  categoriaSelecionada === cat ? 'bg-lua-rose-dark text-white' : 'bg-white text-slate-500 hover:text-lua-rose-dark border border-slate-200 hover:border-lua-rose-light'
                }`}
              >
@@ -593,8 +595,8 @@ export default function LojaOnline({ onAdicionarProduto }) {
       )}
 
       {!carregando && produtos.length > 0 && (
-        <div className="max-w-4xl mx-auto mb-10 md:mb-14 px-4 relative z-20">
-          <div className="bg-white p-2.5 md:p-3 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col md:flex-row gap-3">
+        <div className="max-w-4xl mx-auto mb-8 md:mb-14 px-4 relative z-20">
+          <div className="bg-white p-2.5 md:p-3 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col md:flex-row gap-2 md:gap-3">
             <div className="flex-1 relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
               <input 
@@ -606,28 +608,30 @@ export default function LojaOnline({ onAdicionarProduto }) {
               />
             </div>
 
-            <select 
-              value={corFiltro} 
-              onChange={(e) => setCorFiltro(e.target.value)}
-              className="md:w-40 bg-slate-50 border border-slate-100 hover:border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-lua-rose-dark/20 cursor-pointer"
-            >
-              <option value="">Qualquer Cor</option>
-              {opcoesCores.map(cor => <option key={cor} value={cor}>{cor}</option>)}
-            </select>
+            <div className="flex gap-2">
+              <select 
+                value={corFiltro} 
+                onChange={(e) => setCorFiltro(e.target.value)}
+                className="w-1/2 md:w-40 bg-slate-50 border border-slate-100 hover:border-slate-200 rounded-xl px-2 md:px-4 py-2.5 text-xs md:text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-lua-rose-dark/20 cursor-pointer"
+              >
+                <option value="">Cores</option>
+                {opcoesCores.map(cor => <option key={cor} value={cor}>{cor}</option>)}
+              </select>
 
-            <select 
-              value={tamanhoFiltro} 
-              onChange={(e) => setTamanhoFiltro(e.target.value)}
-              className="md:w-40 bg-slate-50 border border-slate-100 hover:border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-lua-rose-dark/20 cursor-pointer"
-            >
-              <option value="">Qualquer Tam.</option>
-              {opcoesTamanhos.map(tam => <option key={tam} value={tam}>Tamanho {tam}</option>)}
-            </select>
+              <select 
+                value={tamanhoFiltro} 
+                onChange={(e) => setTamanhoFiltro(e.target.value)}
+                className="w-1/2 md:w-40 bg-slate-50 border border-slate-100 hover:border-slate-200 rounded-xl px-2 md:px-4 py-2.5 text-xs md:text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-lua-rose-dark/20 cursor-pointer"
+              >
+                <option value="">Tamanhos</option>
+                {opcoesTamanhos.map(tam => <option key={tam} value={tam}>Tam: {tam}</option>)}
+              </select>
+            </div>
 
             {(termoBusca || corFiltro || tamanhoFiltro) && (
               <button 
                 onClick={limparFiltrosBusca}
-                className="bg-rose-50 text-rose-500 hover:bg-rose-100 hover:text-rose-600 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shrink-0"
+                className="bg-rose-50 text-rose-500 hover:bg-rose-100 hover:text-rose-600 px-4 py-2.5 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors shrink-0"
               >
                 Limpar
               </button>
@@ -635,42 +639,43 @@ export default function LojaOnline({ onAdicionarProduto }) {
           </div>
           
           <div className="text-right mt-2 text-[10px] uppercase tracking-widest text-slate-400 font-bold px-2">
-             Exibindo {produtosFiltrados.length} {produtosFiltrados.length === 1 ? 'modelo' : 'modelos'} disponíveis
+             Exibindo {produtosFiltrados.length} {produtosFiltrados.length === 1 ? 'modelo' : 'modelos'}
           </div>
         </div>
       )}
 
+      {/* 🌟 GRID DE PRODUTOS AJUSTADO PARA 2 COLUNAS NO MOBILE 🌟 */}
       {carregando ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 md:gap-10">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-6 md:gap-10 px-2 md:px-0">
           {[1, 2, 3, 4].map((n) => (
-            <div key={n} className="bg-white rounded-3xl p-4 space-y-4 animate-pulse shadow-sm border border-slate-100">
-              <div className="bg-slate-100 aspect-[3/4] w-full rounded-2xl" />
-              <div className="pt-4 space-y-3 px-2">
-                <div className="h-6 bg-slate-100 rounded-md w-3/4" />
-                <div className="h-5 bg-slate-100 rounded-md w-1/3" />
-                <div className="h-14 bg-slate-100 rounded-xl w-full mt-4" />
+            <div key={n} className="bg-white rounded-2xl md:rounded-3xl p-3 md:p-4 space-y-4 animate-pulse shadow-sm border border-slate-100">
+              <div className="bg-slate-100 aspect-[3/4] w-full rounded-xl md:rounded-2xl" />
+              <div className="pt-2 md:pt-4 space-y-2 md:space-y-3 px-1 md:px-2">
+                <div className="h-4 md:h-6 bg-slate-100 rounded-md w-3/4" />
+                <div className="h-4 md:h-5 bg-slate-100 rounded-md w-1/3" />
+                <div className="h-10 md:h-14 bg-slate-100 rounded-lg md:rounded-xl w-full mt-4" />
               </div>
             </div>
           ))}
         </div>
       ) : produtosFiltrados.length === 0 ? (
-        <div className="text-center py-20 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm mx-4 md:mx-0">
-          <span className="text-5xl block mb-6">✨</span>
-          <h3 className="text-2xl font-serif font-medium text-slate-900 mb-3">Nenhuma peça encontrada</h3>
-          <p className="text-slate-500 font-light max-w-sm mx-auto">
+        <div className="text-center py-16 md:py-20 bg-white rounded-[2rem] border border-slate-100 shadow-sm mx-4 md:mx-0">
+          <span className="text-4xl md:text-5xl block mb-4 md:mb-6">✨</span>
+          <h3 className="text-xl md:text-2xl font-serif font-medium text-slate-900 mb-2 md:mb-3">Nenhuma peça encontrada</h3>
+          <p className="text-xs md:text-sm text-slate-500 font-light max-w-sm mx-auto px-4">
             Não temos pijamas com esta exata combinação disponíveis no estoque neste momento.
           </p>
           {(categoriaSelecionada !== 'Todas' || termoBusca || corFiltro || tamanhoFiltro) && (
              <button 
                onClick={() => { setCategoriaSelecionada('Todas'); limparFiltrosBusca(); }} 
-               className="mt-6 text-white bg-slate-900 px-6 py-2.5 rounded-full font-bold text-xs uppercase tracking-widest shadow-md hover:bg-lua-rose-dark transition-colors"
+               className="mt-6 text-white bg-slate-900 px-6 py-2.5 rounded-full font-bold text-[10px] md:text-xs uppercase tracking-widest shadow-md hover:bg-lua-rose-dark transition-colors"
              >
                Ver toda a coleção
              </button>
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 md:gap-10">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-6 md:gap-10 px-2 md:px-0">
           {produtosFiltrados.map((prod) => (
             <ProdutoVitrine 
               key={prod.id} 
