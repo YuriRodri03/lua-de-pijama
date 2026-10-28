@@ -107,24 +107,22 @@ function ProdutoVitrine({ produto, onAdicionarProduto, isAtacado }) {
 
   return (
     <>
-      {/* 🌟 CARTÃO COM PROPORÇÕES RESPONSIVAS PARA MOBILE 🌟 */}
+      {/* 🌟 CARTÃO COM PROPORÇÕES RESPONSIVAS E LAZY LOADING 🌟 */}
       <div className={`flex flex-col relative bg-white rounded-2xl md:rounded-3xl overflow-hidden border border-slate-100 ${modalAberto ? 'z-40' : 'group shadow-[0_2px_15px_-3px_rgba(0,0,0,0.04)] hover:shadow-[0_10px_40px_-10px_rgba(0,0,0,0.12)] hover:-translate-y-1 transition-all duration-500'}`}>
         
         <div className="relative aspect-[3/4] bg-white overflow-hidden group/galeria border-b border-slate-50 cursor-pointer" onClick={() => setModalAberto(true)}>
           {galeriaFotos.length > 0 ? (
             <>
-              {galeriaFotos.map((foto, idx) => (
-                <img 
-                  key={idx}
-                  src={foto} 
-                  alt={`${produto.nome} - ângulo ${idx + 1}`} 
-                  // Margem (p) menor no mobile para a foto ficar maior
-                  className={`absolute inset-0 w-full h-full object-contain object-center p-2 md:p-4 transition-all duration-700 ease-in-out group-hover:scale-105 
-                    ${fotoIndex === idx ? 'opacity-100 z-10' : 'opacity-0 z-0 scale-100'} 
-                    ${estaEsgotado ? 'grayscale opacity-60' : ''}
-                  `}
-                />
-              ))}
+              {/* 🌟 RENDERIZA APENAS A FOTO ATIVA (Economia de até 80% de Egress) 🌟 */}
+              <img 
+                src={galeriaFotos[fotoIndex]} 
+                alt={`${produto.nome} - ângulo ${fotoIndex + 1}`} 
+                loading="lazy"
+                decoding="async"
+                className={`absolute inset-0 w-full h-full object-contain object-center p-2 md:p-4 transition-transform duration-700 ease-in-out group-hover:scale-105 z-10 
+                  ${estaEsgotado ? 'grayscale opacity-60' : ''}
+                `}
+              />
 
               {temMaisDeUmaFoto && (
                 <>
@@ -241,7 +239,7 @@ function ProdutoVitrine({ produto, onAdicionarProduto, isAtacado }) {
         </div>
       </div>
 
-      {/* 🌟 MODAL DE DETALHES (QUICK VIEW) Permanece Inalterado, já é responsivo 🌟 */}
+      {/* 🌟 MODAL DE DETALHES (QUICK VIEW) OTIMIZADO 🌟 */}
       {modalAberto && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6" style={{ margin: 0 }}>
           <div className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm transition-opacity" onClick={() => setModalAberto(false)}></div>
@@ -252,9 +250,14 @@ function ProdutoVitrine({ produto, onAdicionarProduto, isAtacado }) {
             <div className="w-full md:w-1/2 bg-slate-50 relative aspect-[3/4] md:aspect-auto md:min-h-full group/modalgaleria">
               {galeriaFotos.length > 0 ? (
                 <>
-                  {galeriaFotos.map((foto, idx) => (
-                    <img key={idx} src={foto} alt={`${produto.nome} - Visão Maior ${idx + 1}`} className={`absolute inset-0 w-full h-full object-contain object-center p-6 md:p-12 transition-all duration-700 ease-in-out ${fotoIndex === idx ? 'opacity-100 z-10' : 'opacity-0 z-0 scale-95'} ${estaEsgotado ? 'grayscale opacity-60' : ''}`} />
-                  ))}
+                  {/* 🌟 RENDERIZA APENAS A FOTO ATIVA NO MODAL TAMBÉM 🌟 */}
+                  <img 
+                    src={galeriaFotos[fotoIndex]} 
+                    alt={`${produto.nome} - Visão Maior ${fotoIndex + 1}`} 
+                    loading="lazy"
+                    decoding="async"
+                    className={`absolute inset-0 w-full h-full object-contain object-center p-6 md:p-12 transition-all duration-500 ease-in-out z-10 ${estaEsgotado ? 'grayscale opacity-60' : ''}`} 
+                  />
                   {temMaisDeUmaFoto && (
                     <>
                       <button onClick={fotoAnterior} className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center rounded-full bg-slate-900/10 backdrop-blur-md text-slate-800 shadow-sm transition-all hover:bg-slate-900/20 z-20">❮</button>

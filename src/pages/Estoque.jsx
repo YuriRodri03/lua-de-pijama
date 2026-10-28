@@ -3,6 +3,52 @@ import Button from '../components/Button';
 import StatCard from '../components/StatCard';
 import { supabase } from '../services/supabase';
 
+// 🌟 FUNÇÃO AUXILIAR: COMPRESSOR DE IMAGEM NATIVO (Reduz de ~5MB para ~100KB em WebP) 🌟
+const comprimirImagem = (file, maxWidth = 1000, quality = 0.8) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error('Erro ao comprimir imagem'));
+              return;
+            }
+            const nomeLimpo = file.name.replace(/\.[^/.]+$/, "");
+            const arquivoComprimido = new File([blob], `${nomeLimpo}.webp`, {
+              type: 'image/webp',
+              lastModified: Date.now(),
+            });
+            resolve(arquivoComprimido);
+          },
+          'image/webp',
+          quality
+        );
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
+  });
+};
+
 export default function Estoque() {
   const [itens, setItens] = useState([]);
   const [carregando, setCarregando] = useState(true);
@@ -10,6 +56,10 @@ export default function Estoque() {
   const [editandoId, setEditandoId] = useState(null);
 
   const [abaAtual, setAbaAtual] = useState('catalogo'); 
+
+  // 🌟 ESTADOS DO OTIMIZADOR EM LOTE 🌟
+  const [otimizando, setOtimizando] = useState(false);
+  const [progressoOtimizacao, setProgressoOtimizacao] = useState('');
 
   // -------------------------------------------------------------------
   // ESTADOS DO FORMULÁRIO (PRODUTO BASE)
@@ -74,6 +124,114 @@ export default function Estoque() {
     buscarCategorias();
     buscarEstoque();
   }, []);
+
+  // 🌟 FUNÇÃO MÁGICA: OTIMIZAR TODAS AS FOTOS ANTIGAS DO BANCO DE UMA VEZ 🌟
+  const handleOtimizarCatalogoAntigo = async () => {
+    if (!window.confirm("Isso vai buscar todas as fotos antigas (JPG/PNG), comprimir para WebP leve e substituir no banco de dados automaticamente. Deseja iniciar?")) return;
+
+    setOtimizando(true);
+    let fotosConvertidas = 0;
+    let produtosAtualizados = 0;
+
+    try {
+      for (let pIndex = 0; pIndex < itens.length; pIndex++) {
+        const prod = itens[pIndex];
+        if (!prod.foto_url) continue;
+
+        let listaUrls = [];
+        try {
+          const parsed = JSON.parse(prod.foto_url);
+          listaUrls = Array.isArray(parsed) ? parsed : [prod.foto_url];
+        } catch (e) {
+          listaUrls = [prod.foto_url];
+        }
+
+        // Se todas as fotos desse produto já forem .webp, pula ele!
+        const precisaOtimizar = listaUrls.some(url => !url.toLowerCase().endsWith('.webp'));
+        if (!precisaOtimizar) continue;
+
+        setProgressoOtimizacao(`Otimizando "${prod.nome}" (${pIndex + 1} de ${itens.length})...`);
+
+        const novasUrlsDoProduto = [];
+        const caminhosAntigosParaDeletar = [];
+
+        for (let fIndex = 0; fIndex < listaUrls.length; fIndex++) {
+          const urlAtual = listaUrls[fIndex];
+
+          // Se já for webp, mantém como está
+          if (urlAtual.toLowerCase().endsWith('.webp')) {
+            novasUrlsDoProduto.push(urlAtual);
+            continue;
+          }
+
+          try {
+            // 1. Baixa a imagem antiga
+            const resposta = await fetch(urlAtual);
+            if (!resposta.ok) throw new Error('Falha ao baixar imagem');
+            const blobAntigo = await resposta.blob();
+
+            // 2. Transforma em File e passa pelo nosso compressor WebP
+            const arquivoTemp = new File([blobAntigo], `otimizado_${fIndex}.jpg`, { type: blobAntigo.type });
+            const arquivoOtimizado = await comprimirImagem(arquivoTemp, 1000, 0.8);
+
+            // 3. Sobe a versão nova super leve com cache de 1 ano
+            const novoCaminho = `produtos/${prod.id}_opt_${Date.now()}_${fIndex}.webp`;
+            const { error: uploadError } = await supabase.storage
+              .from('produtos')
+              .upload(novoCaminho, arquivoOtimizado, {
+                cacheControl: '31536000',
+                contentType: 'image/webp'
+              });
+
+            if (uploadError) throw uploadError;
+
+            const { data: linkData } = supabase.storage
+              .from('produtos')
+              .getPublicUrl(novoCaminho);
+
+            novasUrlsDoProduto.push(linkData.publicUrl);
+            fotosConvertidas++;
+
+            // 4. Guarda o caminho da foto velha pesada para apagar depois
+            const partesUrl = urlAtual.split('/storage/v1/object/public/produtos/');
+            if (partesUrl.length > 1) {
+              caminhosAntigosParaDeletar.push(partesUrl[1]);
+            }
+          } catch (errFoto) {
+            console.warn(`Não foi possível otimizar uma foto do produto ${prod.nome}, mantendo original:`, errFoto);
+            novasUrlsDoProduto.push(urlAtual);
+          }
+        }
+
+        // 5. Salva os novos links leves no produto
+        const valorFinalFotoUrl = novasUrlsDoProduto.length === 1 
+          ? novasUrlsDoProduto[0] 
+          : JSON.stringify(novasUrlsDoProduto);
+
+        const { error: updateError } = await supabase
+          .from('produtos')
+          .update({ foto_url: valorFinalFotoUrl })
+          .eq('id', prod.id);
+
+        if (!updateError) {
+          produtosAtualizados++;
+          // 6. Apaga os arquivos antigos pesados do Storage para limpar espaço
+          if (caminhosAntigosParaDeletar.length > 0) {
+            await supabase.storage.from('produtos').remove(caminhosAntigosParaDeletar);
+          }
+        }
+      }
+
+      alert(`🎉 Otimização concluída! ${fotosConvertidas} foto(s) em ${produtosAtualizados} produto(s) foram comprimidas para WebP com sucesso!`);
+      buscarEstoque();
+    } catch (error) {
+      console.error('Erro na otimização:', error);
+      alert('Ocorreu um erro durante a otimização. Verifique o console.');
+    } finally {
+      setOtimizando(false);
+      setProgressoOtimizacao('');
+    }
+  };
 
   // 🌟 GESTÃO DE CATEGORIAS 🌟
   const handleSalvarCategoria = async (e) => {
@@ -178,12 +336,8 @@ export default function Estoque() {
 
   // 🌟 FORMULÁRIO DE PRODUTO (EDITAR E DUPLICAR) 🌟
   const iniciarEdicao = (produto, isDuplicacao = false) => {
-    // Se for duplicação, deixamos o editandoId NULO, para o sistema salvar como um NOVO produto
     setEditandoId(isDuplicacao ? null : produto.id);
-    
-    // Adiciona o sufixo "Cópia" se estiver duplicando
     setNome(isDuplicacao ? `${produto.nome} (Cópia)` : produto.nome);
-    
     setPrecoVarejo(produto.preco_varejo || '');
     setPrecoAtacado(produto.preco_atacado || '');
     setCategoria(produto.categoria || '');
@@ -191,14 +345,12 @@ export default function Estoque() {
 
     try {
       const varsArray = typeof produto.variacoes === 'string' ? JSON.parse(produto.variacoes) : (produto.variacoes || []);
-      // Gera novos IDs locais para a cópia também
       const varsComId = varsArray.map(v => ({ ...v, id_local: Math.random().toString() }));
       setVariacoesInput(varsComId);
     } catch (e) {
       setVariacoesInput([]);
     }
 
-    // Se for edição, puxa as fotos. Se for duplicação, limpa as fotos (pois geralmente é outra estampa)
     if (!isDuplicacao && produto.foto_url) {
       try {
         const fotosParsed = JSON.parse(produto.foto_url);
@@ -245,6 +397,7 @@ export default function Estoque() {
     setFotosExistentes(novasFotos);
   };
 
+  // 🌟 CADASTRO COM COMPRESSÃO DE IMAGEM E CACHE LONGO 🌟
   const handleCadastrar = async (e) => {
     e.preventDefault();
 
@@ -259,12 +412,24 @@ export default function Estoque() {
     try {
       if (fotosArquivos && fotosArquivos.length > 0) {
         for (let i = 0; i < fotosArquivos.length; i++) {
-          const file = fotosArquivos[i];
-          const extensao = file.name.split('.').pop();
-          const caminhoArquivo = `produtos/${Date.now()}_${i}.${extensao}`;
-          const { error: uploadError } = await supabase.storage.from('produtos').upload(caminhoArquivo, file);
+          const fileOriginal = fotosArquivos[i];
+          
+          const fileOtimizado = await comprimirImagem(fileOriginal, 1000, 0.8);
+          const caminhoArquivo = `produtos/${Date.now()}_${i}.webp`;
+          
+          const { error: uploadError } = await supabase.storage
+            .from('produtos')
+            .upload(caminhoArquivo, fileOtimizado, {
+              cacheControl: '31536000',
+              contentType: 'image/webp'
+            });
+            
           if (uploadError) throw uploadError;
-          const { data: linkData } = supabase.storage.from('produtos').getPublicUrl(caminhoArquivo);
+          
+          const { data: linkData } = supabase.storage
+            .from('produtos')
+            .getPublicUrl(caminhoArquivo);
+            
           urlsImagensFinais.push(linkData.publicUrl);
         }
       }
@@ -307,10 +472,36 @@ export default function Estoque() {
     }
   };
 
+  // 🌟 EXCLUSÃO COM LIMPEZA FÍSICA DO STORAGE 🌟
   const handleDeletar = async (id) => {
     if (confirm("Tem certeza que deseja remover este produto e TODAS as suas variações?")) {
       try {
-        await supabase.from('produtos').delete().eq('id', id);
+        const produtoParaDeletar = itens.find(item => item.id === id);
+
+        if (produtoParaDeletar?.foto_url) {
+          let listaUrls = [];
+          try {
+            const parsed = JSON.parse(produtoParaDeletar.foto_url);
+            listaUrls = Array.isArray(parsed) ? parsed : [produtoParaDeletar.foto_url];
+          } catch (e) {
+            listaUrls = [produtoParaDeletar.foto_url];
+          }
+
+          const caminhosParaRemover = listaUrls
+            .map(url => {
+              const partes = url.split('/storage/v1/object/public/produtos/');
+              return partes.length > 1 ? partes[1] : null;
+            })
+            .filter(Boolean);
+
+          if (caminhosParaRemover.length > 0) {
+            await supabase.storage.from('produtos').remove(caminhosParaRemover);
+          }
+        }
+
+        const { error } = await supabase.from('produtos').delete().eq('id', id);
+        if (error) throw error;
+
         setItens(itens.filter(item => item.id !== id));
       } catch (error) {
         alert('Não foi possível remover o produto do estoque.');
@@ -334,7 +525,6 @@ export default function Estoque() {
     return fotoString; 
   };
 
-  // Função para formatar o ID como um código numérico (ex: REF-00150)
   const formatarCodigoRef = (id) => {
     if (!id) return '';
     if (Number.isInteger(Number(id))) {
@@ -443,11 +633,32 @@ export default function Estoque() {
           </div>
 
           <div className="bg-white border border-lua-rose-dark/10 p-4 md:p-6 rounded-2xl shadow-xs">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-serif text-lg md:text-xl font-bold text-slate-800">Catálogo Cadastrado</h3>
-              <Button variant="primary" onClick={() => setAbaAtual('cadastro')} className="text-xs py-2 px-4 shadow-sm">
-                + Novo Produto
-              </Button>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <div>
+                <h3 className="font-serif text-lg md:text-xl font-bold text-slate-800">Catálogo Cadastrado</h3>
+                {otimizando && (
+                  <p className="text-xs text-amber-600 font-bold mt-1 animate-pulse">
+                    ⏳ {progressoOtimizacao}
+                  </p>
+                )}
+              </div>
+              
+              <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                {/* 🌟 BOTÃO PARA OTIMIZAR FOTOS ANTIGAS EM LOTE 🌟 */}
+                <button
+                  type="button"
+                  onClick={handleOtimizarCatalogoAntigo}
+                  disabled={otimizando || carregando || itens.length === 0}
+                  className="flex-1 sm:flex-none text-xs bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold py-2 px-3 rounded-xl transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                  title="Comprime todas as fotos antigas (JPG/PNG) para WebP leve automaticamente"
+                >
+                  {otimizando ? '⏳ Comprimindo...' : '⚡ Otimizar Fotos Antigas'}
+                </button>
+
+                <Button variant="primary" onClick={() => setAbaAtual('cadastro')} className="flex-1 sm:flex-none text-xs py-2 px-4 shadow-sm">
+                  + Novo Produto
+                </Button>
+              </div>
             </div>
 
             <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0 pb-2">
@@ -484,7 +695,7 @@ export default function Estoque() {
                         <tr key={item.id} className="hover:bg-slate-50/50 transition-colors align-top group">
                           <td className="p-4 flex gap-3">
                             {fotoCapa ? (
-                              <img src={fotoCapa} alt={item.nome} className="w-14 h-14 rounded-lg object-cover border border-slate-200 shadow-sm shrink-0" />
+                              <img src={fotoCapa} alt={item.nome} loading="lazy" className="w-14 h-14 rounded-lg object-cover border border-slate-200 shadow-sm shrink-0" />
                             ) : (
                               <div className="w-14 h-14 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400 text-2xl">📸</div>
                             )}
@@ -521,7 +732,6 @@ export default function Estoque() {
 
                           <td className="p-4 text-right whitespace-nowrap align-middle">
                              <div className="flex justify-end gap-2">
-                                {/* 🌟 NOVO BOTÃO: DUPLICAR 🌟 */}
                                 <button onClick={() => iniciarEdicao(item, true)} title="Duplicar Produto" className="text-xs text-slate-600 hover:text-slate-800 font-medium bg-white hover:bg-slate-100 px-3 py-2 rounded-lg transition-all border border-slate-200 shadow-sm flex items-center gap-1">
                                   📑 <span className="hidden sm:inline">Duplicar</span>
                                 </button>
@@ -562,7 +772,6 @@ export default function Estoque() {
                    </>
                  ) : 'Registrar Novo Produto'}
                </h3>
-               {/* Mudamos o texto do botão de cancelar se estiver apenas duplicando e não editando algo já salvo */}
                {(editandoId || nome.includes('(Cópia)')) && (
                    <button onClick={cancelarEdicao} className="text-xs text-rose-500 hover:text-rose-700 font-bold uppercase tracking-wider bg-rose-50 px-3 py-1.5 rounded-lg">
                        Cancelar
@@ -623,7 +832,7 @@ export default function Estoque() {
                     <div className="flex flex-wrap gap-3 p-3 bg-white border border-slate-200 rounded-lg shadow-inner">
                       {fotosExistentes.map((url, idx) => (
                         <div key={idx} className={`relative w-24 h-24 rounded-lg overflow-hidden group transition-all ${idx === 0 ? 'ring-2 ring-lua-rose-dark shadow-md' : 'border border-slate-200'}`}>
-                          <img src={url} alt={`Foto ${idx+1}`} className="w-full h-full object-cover" />
+                          <img src={url} alt={`Foto ${idx+1}`} loading="lazy" className="w-full h-full object-cover" />
                           {idx === 0 && <div className="absolute top-0 left-0 bg-lua-rose-dark text-white text-[9px] font-bold uppercase px-2 py-0.5 rounded-br-lg shadow-sm z-10">Capa</div>}
                           <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 z-20">
                              {idx !== 0 && (
@@ -639,10 +848,10 @@ export default function Estoque() {
 
                 <div>
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5">
-                    {fotosExistentes.length > 0 ? 'Adicionar Novas Fotos' : 'Fotos do Produto'}
+                    {fotosExistentes.length > 0 ? 'Adicionar Novas Fotos (Compressão Automática)' : 'Fotos do Produto (Compressão Automática)'}
                   </label>
                   <input id="input-foto" type="file" accept="image/*" multiple onChange={(e) => setFotosArquivos(Array.from(e.target.files))} className="w-full text-sm bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 transition-all cursor-pointer" />
-                  {fotosArquivos.length > 0 && <p className="text-[10px] text-green-600 mt-2 font-semibold">+{fotosArquivos.length} foto(s) pronta(s) para upload.</p>}
+                  {fotosArquivos.length > 0 && <p className="text-[10px] text-green-600 mt-2 font-semibold">+{fotosArquivos.length} foto(s) pronta(s) para otimização e envio.</p>}
                 </div>
               </div>
 
@@ -710,14 +919,13 @@ export default function Estoque() {
               </div>
 
               <div className="pt-4 flex gap-3">
-                {/* O botão cancelar agora aparece se estiver editando OU se for uma cópia sendo gerada */}
                 {(editandoId || nome.includes('(Cópia)')) && (
                   <button type="button" onClick={cancelarEdicao} className="w-1/3 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3.5 rounded-xl text-sm font-bold uppercase tracking-wider transition-colors">
                     Cancelar
                   </button>
                 )}
                 <button type="submit" disabled={salvando} className={`${(editandoId || nome.includes('(Cópia)')) ? 'w-2/3' : 'w-full'} bg-lua-rose-dark text-white py-3.5 rounded-xl text-sm font-bold uppercase tracking-widest hover:bg-lua-rose transition-all shadow-md disabled:opacity-70`}>
-                  {salvando ? '⏳ Salvando...' : (editandoId ? 'Concluir Edição' : 'Cadastrar Produto')}
+                  {salvando ? '⏳ Comprimindo e Salvando...' : (editandoId ? 'Concluir Edição' : 'Cadastrar Produto')}
                 </button>
               </div>
             </form>
